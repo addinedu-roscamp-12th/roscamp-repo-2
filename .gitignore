@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ROS2 colcon build artifacts
+build/
+install/
+log/
