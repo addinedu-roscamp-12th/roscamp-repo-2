@@ -8,6 +8,7 @@ ROS2와 AI를 활용한 자율주행 로봇개발자 부트캠프 2팀 저장소
 
 - [레포 구조](#레포-구조)
 - [패키지 소개](#패키지-소개)
+- [사전 패키지 설치](#사전-패키지-설치)
 - [설치 및 빌드 방법](#설치-및-빌드-방법)
 - [패키지 실행 방법](#패키지-실행-방법)
 - [노드 추가 방법](#노드-추가-방법)
@@ -21,7 +22,8 @@ roscamp-repo-2/
 └── src/
     ├── jetcobot1/     # Jetcobot 로봇 1번 제어 패키지
     ├── jetcobot2/     # Jetcobot 로봇 2번 제어 패키지
-    └── pinky1/        # Pinky 로봇 1번 제어 패키지
+    ├── pinky1/        # Pinky 로봇 1번 제어 패키지
+    └── db/            # MySQL DB 연결 및 쿼리 처리 패키지
 ```
 
 > `src/` 폴더 안에 각 로봇을 제어하는 ROS2 패키지가 들어있습니다.
@@ -37,6 +39,7 @@ roscamp-repo-2/
 | `jetcobot1` | Jetcobot 1호 | Jetcobot 1번 로봇 제어 노드 모음 |
 | `jetcobot2` | Jetcobot 2호 | Jetcobot 2번 로봇 제어 노드 모음 |
 | `pinky1`    | Pinky 1호   | Pinky 1번 로봇 제어 노드 모음 |
+| `db`        | 공통        | MySQL DB 연결 및 쿼리 실행 노드 (mysql_node), DB 클라이언트 라이브러리 (db_client) |
 
 ### 공통 의존성
 
@@ -51,6 +54,27 @@ roscamp-repo-2/
 | `sensor_msgs` | 센서 데이터 메시지 (LaserScan, Image, Imu 등) |
 
 ---
+
+## 사전 패키지 설치
+
+ROS2 패키지 외에 아래 Python 라이브러리를 별도로 설치해야 합니다.
+
+### pymysql (db 패키지 사용 시 필수)
+
+MySQL 데이터베이스에 연결하기 위한 Python 라이브러리입니다.
+
+```bash
+pip3 install pymysql
+```
+
+설치 확인:
+
+```bash
+python3 -c "import pymysql; print('pymysql 설치 완료')"
+```
+
+---
+
 ## 설치 및 빌드 방법
 
 ### 1. 레포 클론
