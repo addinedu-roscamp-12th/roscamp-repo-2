@@ -43,7 +43,7 @@ roscamp-repo-2/
 
 ### 공통 의존성
 
-모든 패키지는 아래 ROS2 기본 패키지에 의존합니다.
+모든 패키지는 아래 ROS2 기본 패키지에 의존합니다. afsfsfdfeifeodsodsfdfdfdf
 
 | 패키지 | 용도 |
 |--------|------|
