@@ -52,25 +52,12 @@ roscamp-repo-2/
 | `sensor_msgs` | 센서 데이터 메시지 (LaserScan, Image, Imu 등) |
 
 ---
-
-## 사전 준비
-
-- **Ubuntu 22.04**
-- **ROS2 Humble** 설치 완료
-- `pinky_pro` 워크스페이스가 빌드되어 있는 경우, 아래 명령어로 먼저 source 필요
-
-```bash
-source ~/pinky_pro/install/setup.bash
-```
-
----
-
 ## 설치 및 빌드 방법
 
 ### 1. 레포 클론
 
 ```bash
-git clone https://github.com/<조직명>/roscamp-repo-2.git
+git clone https://github.com/addinedu-roscamp-12th/roscamp-repo-2.git
 cd roscamp-repo-2
 ```
 
@@ -86,6 +73,7 @@ rosdep install --from-paths src --ignore-src -r -y
 ### 3. 빌드
 
 ```bash
+# 워크스페이스 루트(roscamp-repo-2/)에서 실행
 colcon build
 ```
 
@@ -94,7 +82,6 @@ colcon build
 ```bash
 source install/setup.bash
 ```
-
 ---
 
 ## 패키지 실행 방법
