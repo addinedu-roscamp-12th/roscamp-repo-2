@@ -1,0 +1,19 @@
+# ROS2 빌드 산출물
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# 지도 파일 (바이너리)
+*.pgm
+*.yaml
+
+# 환경 설정 (개인 IP 등)
+.env
