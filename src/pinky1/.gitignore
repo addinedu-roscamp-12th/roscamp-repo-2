@@ -1,0 +1,15 @@
+# VS Code
+.vscode/browse.vc.db
+.vscode/browse.vc.db-shm
+.vscode/browse.vc.db-wal
+
+# Python
+__pycache__/
+*.pyc
+
+# YOLO 모델
+*.pt
+
+# ROS2 TF 프레임 시각화
+frames_*.gv
+frames_*.pdf
