@@ -10,4 +10,5 @@ COPY camera_server.py .
 
 RUN pip install --no-cache-dir opencv-python-headless
 
+ENV PYTHONUNBUFFERED=1
 CMD ["python3", "camera_server.py"]
