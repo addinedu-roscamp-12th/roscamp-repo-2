@@ -24,9 +24,9 @@ class SlamManager:
         self.map      = None
         self._process = None
 
-        # /map 토픽 구독
+        ns = getattr(node, 'ns', 'pinky1')
         self.node.create_subscription(
-            OccupancyGrid, "/map",
+            OccupancyGrid, f"/{ns}/map",
             self._on_map, 10)
 
         self.log.info("SLAM", "SlamManager 초기화 완료")

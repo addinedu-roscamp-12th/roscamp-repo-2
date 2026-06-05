@@ -13,9 +13,12 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 COUNT = int(sys.argv[1]) if len(sys.argv) > 1 else 5
 
 
+NS = "pinky1"
+
+
 class PoseReader(Node):
     def __init__(self):
-        super().__init__("pose_reader")
+        super().__init__("pose_reader", namespace=NS)
         self._samples = []
         qos = QoSProfile(
             depth=10,
@@ -23,7 +26,7 @@ class PoseReader(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self._sub = self.create_subscription(
             PoseWithCovarianceStamped,
-            "/amcl_pose",
+            "amcl_pose",
             self._cb,
             qos)
         self.create_timer(3.0, self._timeout)

@@ -221,3 +221,13 @@ __marimo__/
 build/
 install/
 log/
+
+# 개인 개발 일지
+DEVLOG.md
+
+# Claude Code 설정
+.claude/
+CLAUDE.md
+
+# VS Code 설정
+.vscode/

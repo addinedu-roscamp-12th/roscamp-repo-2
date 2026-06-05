@@ -25,7 +25,8 @@ class VisualDock:
     """
 
     def __init__(self, node):
-        self._pub   = node.create_publisher(Twist, "/cmd_vel", 10)
+        ns = getattr(node, 'ns', 'pinky1')
+        self._pub   = node.create_publisher(Twist, f"/{ns}/cmd_vel", 10)
         self.log    = RobotLogger(node)
         self.active = False
         self._done_cb   = None
