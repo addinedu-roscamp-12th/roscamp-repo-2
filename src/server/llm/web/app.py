@@ -18,41 +18,66 @@ ROBOT_URLS = {
     "pinky2": "http://192.168.1.81:8002",
 }
 
-SYSTEM_PROMPT = """\
-당신은 물류창고 로봇 제어 AI입니다.
-사용자의 자연어 명령을 해석하여 반드시 JSON만 출력하세요.
-설명 텍스트, 마크다운, 줄바꿈 없이 JSON 한 줄만 출력하세요.
 
+def _get_routing_mode() -> str:
+    """task_manager에서 현재 라우팅 모드를 조회."""
+    try:
+        resp = requests.get(f"{TASK_MANAGER_URL}/mode", timeout=2)
+        return resp.json().get("routing_mode", "zone")
+    except Exception:
+        return "zone"
+
+
+def _build_system_prompt(mode: str) -> str:
+    if mode == "waypoint":
+        inbound_block = """\
+[입고 작업] 렉 구역(1~3)을 지정해 작업 시작:
+{"action": "inbound_task", "parameters": {"storage_zone": "rack_<N>"}}
+
+렉 번호 변환 규칙 (반드시 따를 것):
+  "N번 렉" / "N번 랙" / "N번 구역" / "N번에 넣어줘" → storage_zone: "rack_N"
+  예) "1번 렉에 넣어줘" → {"action": "inbound_task", "parameters": {"storage_zone": "rack_1"}}
+  예) "3번 랙으로"     → {"action": "inbound_task", "parameters": {"storage_zone": "rack_3"}}
+  렉 번호 범위: 1 ~ 3"""
+    else:
+        inbound_block = """\
 [입고 작업] 렉 번호(1~16)를 지정해 작업 시작:
 {"action": "inbound_task", "parameters": {"storage_zone": "zone_<N>"}}
-
-[단순 이동] 로봇 직접 이동 명령:
-{"action": "navigate", "parameters": {"location": "<장소키>"}}
-
-[정지]: {"action": "navigate", "parameters": {"location": "stop"}}
-[이해불가]: {"action": "unknown", "parameters": {"reason": "<이유>"}}
-
-장소 키: home, loading_zone, unloading_zone, charging, warehouse,
-         marker_0~marker_4, stop
 
 렉 번호 변환 규칙 (반드시 따를 것):
   "N번 렉" / "N번 랙" / "N번 구역" / "N번에 넣어줘" → storage_zone: "zone_N"
   예) "3번 렉에 넣어줘" → {"action": "inbound_task", "parameters": {"storage_zone": "zone_3"}}
   예) "7번 랙으로"     → {"action": "inbound_task", "parameters": {"storage_zone": "zone_7"}}
-  렉 번호 범위: 1 ~ 16
+  렉 번호 범위: 1 ~ 16"""
+
+    return f"""\
+당신은 물류창고 로봇 제어 AI입니다.
+사용자의 자연어 명령을 해석하여 반드시 JSON만 출력하세요.
+설명 텍스트, 마크다운, 줄바꿈 없이 JSON 한 줄만 출력하세요.
+
+{inbound_block}
+
+[단순 이동] 로봇 직접 이동 명령:
+{{"action": "navigate", "parameters": {{"location": "<장소키>"}}}}
+
+[정지]: {{"action": "navigate", "parameters": {{"location": "stop"}}}}
+[이해불가]: {{"action": "unknown", "parameters": {{"reason": "<이유>"}}}}
+
+장소 키: home, loading_zone, unloading_zone, charging, warehouse,
+         marker_0~marker_4, stop
 
 "멈춰" / "정지" → navigate, location은 stop
 
 JSON만 출력하세요."""
 
 
-def ask_llm(text: str) -> str:
+def ask_llm(text: str, mode: str = "zone") -> str:
     resp = requests.post(
         f"{OLLAMA_URL}/api/chat",
         json={
             "model": MODEL,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": _build_system_prompt(mode)},
                 {"role": "user",   "content": text},
             ],
             "stream": False,
@@ -125,20 +150,20 @@ def forward_to_task_manager(cmd: dict) -> str:
 @app.post("/command")
 async def command(req: CommandReq):
     try:
-        raw = ask_llm(req.text)
+        mode = _get_routing_mode()
+        raw  = ask_llm(req.text, mode)
 
         match = re.search(r'\{.*\}', raw, re.DOTALL)
         if not match:
             raise json.JSONDecodeError("JSON 없음", raw, 0)
         cmd = json.loads(match.group())
 
-        # 입고 작업 → 태스크매니저로 전달
         if cmd.get("action") == "inbound_task":
             result = forward_to_task_manager(cmd)
         else:
             result = forward_to_robot(req.robot, cmd)
 
-        return {"ok": True, "llm_json": cmd, "result": result}
+        return {"ok": True, "mode": mode, "llm_json": cmd, "result": result}
 
     except json.JSONDecodeError:
         return JSONResponse(status_code=400,
