@@ -25,8 +25,9 @@ class SlamManager:
         self._process = None
 
         ns = getattr(node, 'ns', 'pinky1')
+        self._ns = ns
         self.node.create_subscription(
-            OccupancyGrid, f"/{ns}/map",
+            OccupancyGrid, "/map",
             self._on_map, 10)
 
         self.log.info("SLAM", "SlamManager 초기화 완료")
@@ -35,10 +36,12 @@ class SlamManager:
     def start_mapping(self):
         """새 지도 생성 모드"""
         self.log.info("SLAM", "매핑 모드 시작...")
+        params = self._write_slam_params()
         self._process = subprocess.Popen([
             "ros2", "launch", "slam_toolbox",
             "online_async_launch.py",
             "use_sim_time:=false",
+            f"slam_params_file:={params}",
         ])
 
     def start_localization(self, map_path: str = None):
@@ -60,6 +63,28 @@ class SlamManager:
             "map_saver_cli", "-f", save
         ])
         self.log.info("SLAM", f"지도 저장: {save}.yaml")
+
+    def _write_slam_params(self) -> str:
+        """slam_toolbox용 params yaml을 /tmp에 생성하고 경로 반환"""
+        import tempfile, yaml
+        cfg = SLAM_CONFIG
+        params = {
+            "slam_toolbox": {
+                "ros__parameters": {
+                    "scan_topic":  f"/{self._ns}/scan",
+                    "base_frame":  cfg["base_frame"],
+                    "odom_frame":  cfg["odom_frame"],
+                    "map_frame":   cfg["map_frame"],
+                    "use_sim_time": False,
+                    "mode": "mapping",
+                }
+            }
+        }
+        f = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, prefix="slam_params_")
+        yaml.dump(params, f)
+        f.flush()
+        return f.name
 
     def stop(self):
         """SLAM 종료"""
