@@ -25,11 +25,15 @@ class LineTracer:
     SensorManager.us_range  — Range (초음파 거리)
     """
 
+    # 제어 루프 주기 (초) — 타이머와 D항 계산에 공통 사용
+    _control_dt = 0.05
+
     def __init__(self, node: Node, sensors, nav,
                  line_threshold: int   = 2500,
                  linear_speed:   float = 0.06,
                  angular_gain:   float = 0.8,
-                 stop_distance:  float = 0.10,
+                 angular_d_gain: float = 0.0,
+                 stop_distance:  float = 0.055,
                  rotate_speed:   float = 0.5):
 
         self.node          = node
@@ -40,6 +44,7 @@ class LineTracer:
         self.line_threshold = line_threshold
         self.linear_speed   = linear_speed
         self.angular_gain   = angular_gain
+        self.angular_d_gain = angular_d_gain
         self.stop_distance  = stop_distance
         self.rotate_speed   = rotate_speed
 
@@ -49,6 +54,7 @@ class LineTracer:
         self._stop_confirm   = 10  # 10회 연속 (0.5초) 감지 시 주차
         self._rotate_start   = None
         self._rotate_duration = math.pi / rotate_speed  # 180도 회전 시간(초)
+        self._prev_error     = 0.0  # 직전 오차 (D항 계산용)
 
         ns = getattr(node, 'ns', 'pinky1')
         self._cmd_pub = node.create_publisher(Twist, f"/{ns}/cmd_vel", 10)
@@ -64,8 +70,9 @@ class LineTracer:
         self._state        = _State.LINE_FOLLOWING
         self._stop_count   = 0
         self._rotate_start = None
+        self._prev_error   = 0.0  # D항 누적 방지를 위해 리셋
         self.nav.cancel_navigation()
-        self._timer = self.node.create_timer(0.05, self._loop)  # 20Hz
+        self._timer = self.node.create_timer(self._control_dt, self._loop)  # 20Hz
         self.log.info("LINE", "라인트레이싱 시작")
 
     def stop(self):
@@ -142,12 +149,15 @@ class LineTracer:
             # 라인 잃음 → 저속 직진 탐색
             twist.linear.x  = self.linear_speed * 0.3
             twist.angular.z = 0.0
+            self._prev_error = 0.0  # 라인 복귀 시 D항 튐 방지
             self.log.warn("LINE", "라인 미감지 — 탐색 중")
         else:
             # 가중 평균 오차: -1(왼쪽) ~ 0(정중앙) ~ 1(오른쪽)
-            error = (-1.0 * w_left + 0.0 * w_center + 1.0 * w_right) / total
-            twist.linear.x  = self.linear_speed * (1.0 - 0.5 * abs(error))
-            twist.angular.z = -error * self.angular_gain
+            error   = (-1.0 * w_left + 0.0 * w_center + 1.0 * w_right) / total
+            d_error = (error - self._prev_error) / self._control_dt  # 오차 변화율
+            twist.linear.x   = self.linear_speed * (1.0 - 0.5 * abs(error))
+            twist.angular.z  = -(error * self.angular_gain + d_error * self.angular_d_gain)
+            self._prev_error = error
 
         self._cmd_pub.publish(twist)
 
