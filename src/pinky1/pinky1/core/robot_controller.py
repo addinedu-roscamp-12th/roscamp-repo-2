@@ -38,6 +38,7 @@ class RobotController(Node):
     [ROS2 Action] RobotCommand — 명령 수신 (Task Manager → 로봇)
     """
 
+    # ── 초기화 ──────────────────────────────────────────────────
     def __init__(self, robot_id: str = "pinky1"):
         super().__init__(f"controller_{robot_id}", namespace=robot_id)
 
@@ -52,7 +53,8 @@ class RobotController(Node):
         self.sensors       = SensorManager(self, self.ns)
         self.nav           = NavManager(self, self.ns)
         self.slam          = SlamManager(self)
-        self.line_tracer   = LineTracer(self, self.sensors, self.nav)
+        self.line_tracer   = LineTracer(self, self.sensors, self.nav,
+                                       angular_gain=0.25, angular_d_gain=0.10)
         self.aruco         = ArucoDetector(self)
         self.yolo          = YoloDetector(self)
         self._docking              = False
@@ -93,7 +95,7 @@ class RobotController(Node):
 
         self.log.info("SYS", "모든 모듈 초기화 완료")
 
-    # ── 비전 루프 ──────────────────────────────────
+    # ── 비전 루프 ──────────────────────────────────────────────
     def _vision_loop(self):
         img  = self.sensors.image
         cam  = self.sensors.camera_matrix
@@ -112,7 +114,7 @@ class RobotController(Node):
     def _on_image(self, msg):
         pass
 
-    # ── 이벤트 핸들러 ──────────────────────────────
+    # ── 이벤트 핸들러 ──────────────────────────────────────────
     def _on_person_by_yolo(self, obj):
         self.log.warn("SYS", "YOLO 사람 감지 → 긴급 정지!")
         self.nav.emergency_stop(activate=True)
@@ -144,6 +146,7 @@ class RobotController(Node):
                     self.visual_dock.start(done_callback=self._on_dock_done)
                     self.visual_dock.update(m)
 
+    # ── 액션 서버 & 내비게이션 콜백 ─────────────────────────────
     def _execute_callback(self, goal_handle):
         action_type = goal_handle.request.action_type
         params      = json.loads(goal_handle.request.parameters_json or "{}")
@@ -243,13 +246,14 @@ class RobotController(Node):
     def _on_robot_status(self, msg):
         self.log.info("SYS", f"로봇 상태: {msg}")
 
-    # ── 명령 실행 ──────────────────────────────────
+    # ── 명령 라우터 ────────────────────────────────────────────
     def _run_command(self, cmd: dict):
         action = cmd.get("action", "unknown")
         params = cmd.get("parameters", {})
 
         self.log.info("SYS", f"실행: {action} {params}")
 
+        # 이동 / 도킹 / 운반
         if action == "navigate":
             self._stop_search()
             self._target_marker_id     = None
@@ -288,6 +292,7 @@ class RobotController(Node):
                 params.get("pickup",   "loading_zone"),
                 params.get("delivery", "zone_A"))
 
+        # 정지 / 재개
         elif action == "stop":
             self._stop_search()
             self._target_marker_id = None
@@ -299,6 +304,7 @@ class RobotController(Node):
             self.nav.emergency_stop(activate=False)
             self.nav.set_led(0, 255, 0)
 
+        # SLAM
         elif action == "start_mapping":
             self.slam.start_mapping()
 
@@ -312,6 +318,7 @@ class RobotController(Node):
         elif action == "save_map":
             self.slam.save_map(params.get("path", None))
 
+        # 표현 / 조명
         elif action == "set_emotion":
             self.nav.set_emotion(
                 params.get("emotion", "neutral"))
@@ -327,6 +334,7 @@ class RobotController(Node):
                 params.get("mode",  "on"),
                 params.get("color", "white"))
 
+        # 라인 트레이싱
         elif action == "line_trace_start":
             self.line_tracer.on_parked = lambda: self._send_callback("parked")
             self.line_tracer.start()

@@ -7,6 +7,7 @@ from geometry_msgs.msg import Twist
 from pinky1.utils.logger import RobotLogger
 
 
+# ── 정밀 정차 튜닝 파라미터 ────────────────────────────────────
 IMAGE_WIDTH      = 640   # 카메라 해상도 가로
 CENTER_TOLERANCE = 20    # px — 좌우 허용 오차
 PERP_TOLERANCE   = 8     # px — 좌우 높이 차 허용 오차 (정면 판단)
@@ -33,6 +34,7 @@ class VisualDock:
         self._state     = None  # "align" | "forward" | None
         self._last_log  = 0.0
 
+    # ── 외부 인터페이스 ────────────────────────────────────────
     def start(self, done_callback=None):
         self.active   = True
         self._done_cb = done_callback
@@ -42,6 +44,7 @@ class VisualDock:
         self.active = False
         self._send(0.0, 0.0)
 
+    # ── 제어 루프 ──────────────────────────────────────────────
     def update(self, marker: dict) -> bool:
         if not self.active:
             return False
@@ -95,6 +98,7 @@ class VisualDock:
         self._send(linear, angular)
         return False
 
+    # ── 헬퍼 ───────────────────────────────────────────────────
     def _send(self, linear: float, angular: float):
         msg = Twist()
         msg.linear.x  = linear
