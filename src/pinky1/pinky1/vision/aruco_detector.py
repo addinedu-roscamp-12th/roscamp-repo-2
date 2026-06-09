@@ -38,6 +38,7 @@ class ArucoDetector:
 
         self.log.info("ARUCO", "ArUco 감지기 초기화 완료")
 
+    # ── 감지 ───────────────────────────────────────────────────
     def detect(self, image_msg, camera_matrix, dist_coeffs):
         """
         이미지에서 마커 감지
@@ -50,6 +51,7 @@ class ArucoDetector:
         if image_msg is None:
             return []
 
+        # 1) 마커 추출
         frame = self.bridge.imgmsg_to_cv2(
             image_msg, desired_encoding="bgr8")
         gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -59,12 +61,14 @@ class ArucoDetector:
             self._seen_ids.clear()
             return []
 
+        # 2) 신규 감지 ID 추적
         current_ids = set(ids.flatten().tolist())
         new_ids     = current_ids - self._seen_ids
         self._seen_ids = current_ids
 
         results = []
         for i, mid in enumerate(ids.flatten()):
+            # 3) 마커별 메타데이터 구성
             pts = corners[i][0]
             cx  = int(pts[:, 0].mean())
             cy  = int(pts[:, 1].mean())
@@ -82,6 +86,7 @@ class ArucoDetector:
                 "rvec":       None,
             }
 
+            # 4) 자세 추정 (camera_matrix 있을 때)
             if camera_matrix is not None and dist_coeffs is not None:
                 rvec, tvec, _ = cv2.aruco.estimatePoseSingleMarkers(
                     corners[i:i+1], self.marker_size,
@@ -90,6 +95,7 @@ class ArucoDetector:
                 res["tvec"]     = tvec[0][0].tolist()
                 res["rvec"]     = rvec[0][0].tolist()
 
+            # 5) 등록되지 않은 마커 필터링
             if res["location"] == "unknown":
                 continue  # 등록되지 않은 마커 무시
             results.append(res)
@@ -98,11 +104,13 @@ class ArucoDetector:
                 self.log.info("ARUCO",
                     f"마커 {mid} 감지 | {res['location']} {dist_str}")
 
+        # 6) 콜백 호출
         if results and self.on_detected:
             self.on_detected(results)
 
         return results
 
+    # ── 헬퍼 ───────────────────────────────────────────────────
     def get_approach_tvec(self, tvec: list) -> list:
         """마커 앞 정차 위치 계산 (approach_distance 만큼 앞)"""
         t    = tvec.copy()

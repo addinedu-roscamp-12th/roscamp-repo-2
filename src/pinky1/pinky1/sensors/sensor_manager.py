@@ -44,7 +44,7 @@ class SensorManager:
         self.ns   = f"/{namespace}" if namespace else ""
         self.log  = RobotLogger(node)
 
-        # ── 최신 데이터 저장 ───────────────────────
+        # ── 최신 데이터 저장 ───────────────────────────────────
         self.scan           = None
         self.odom           = None
         self.image          = None
@@ -101,7 +101,8 @@ class SensorManager:
         self.log.info("SENSOR",
             f"센서 구독 완료 (ns={self.ns})")
 
-    # ── 콜백 ───────────────────────────────────────
+    # ── 콜백 ───────────────────────────────────────────────────
+    # 기본 센서
     def _cb_scan(self, msg):
         self.scan = msg
 
@@ -134,6 +135,7 @@ class SensorManager:
     def _cb_ir(self, msg):
         self.ir_range = msg
 
+    # 로봇 상태
     def _cb_robot_status(self, msg):
         self.robot_status = msg
         if self.on_robot_status:
@@ -147,7 +149,7 @@ class SensorManager:
         if self.on_person_detected:
             self.on_person_detected(msg)
 
-    # ── 편의 프로퍼티 ──────────────────────────────
+    # ── 편의 프로퍼티 ──────────────────────────────────────────
     @property
     def position(self):
         """현재 위치 반환 {x, y, z}"""

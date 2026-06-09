@@ -41,6 +41,7 @@ class LineTracer:
         self.nav           = nav
         self.log           = RobotLogger(node)
 
+        # 튜닝 파라미터
         self.line_threshold = line_threshold
         self.linear_speed   = linear_speed
         self.angular_gain   = angular_gain
@@ -48,20 +49,24 @@ class LineTracer:
         self.stop_distance  = stop_distance
         self.rotate_speed   = rotate_speed
 
+        # 상태 변수
         self._state          = _State.IDLE
         self._timer          = None
         self._stop_count     = 0   # 연속 초음파 감지 카운트
         self._stop_confirm   = 10  # 10회 연속 (0.5초) 감지 시 주차
+
+        # 회전 타이밍
         self._rotate_start   = None
         self._rotate_duration = math.pi / rotate_speed  # 180도 회전 시간(초)
         self._prev_error     = 0.0  # 직전 오차 (D항 계산용)
 
+        # 퍼블리셔 · 콜백
         ns = getattr(node, 'ns', 'pinky1')
         self._cmd_pub = node.create_publisher(Twist, f"/{ns}/cmd_vel", 10)
 
         self.on_parked: callable = None  # 주차 완료 콜백
 
-    # ── 외부 인터페이스 ────────────────────────────
+    # ── 외부 인터페이스 ────────────────────────────────────────
     def start(self):
         """라인트레이싱 시작"""
         if self._state == _State.LINE_FOLLOWING:
@@ -90,7 +95,7 @@ class LineTracer:
     def is_parked(self):
         return self._state == _State.PARKED
 
-    # ── 내부 루프 ──────────────────────────────────
+    # ── 내부 루프 ──────────────────────────────────────────────
     def _loop(self):
         if self._state == _State.ROTATING:
             self._do_rotate()
@@ -102,15 +107,11 @@ class LineTracer:
         # 초음파 정지 조건 (연속 감지 debounce)
         us = self.sensors.us_distance
         if us is not None and us <= self.stop_distance:
-            self._stop_count += 1
-            if self._stop_count >= self._stop_confirm:
-                self._publish_stop()
-                self._state        = _State.ROTATING
-                self._rotate_start = self.node.get_clock().now()
-                self.log.info("LINE", f"장애물 감지 → 180도 회전 시작 (거리: {us:.2f}m)")
+            self._publish_stop()
+            self._state        = _State.ROTATING
+            self._rotate_start = self.node.get_clock().now()
+            self.log.info("LINE", f"장애물 감지 → 180도 회전 시작 (거리: {us:.2f}m)")
             return
-        else:
-            self._stop_count = 0
 
         # IR 센서 읽기
         ir = self.sensors.ir_range
@@ -161,7 +162,7 @@ class LineTracer:
 
         self._cmd_pub.publish(twist)
 
-    # ── 헬퍼 ───────────────────────────────────────
+    # ── 헬퍼 ───────────────────────────────────────────────────
     def _publish_stop(self):
         self._cmd_pub.publish(Twist())
 

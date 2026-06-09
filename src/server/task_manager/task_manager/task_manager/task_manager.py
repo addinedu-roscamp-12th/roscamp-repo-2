@@ -33,6 +33,11 @@ from .dispatcher import Dispatcher
 from .task_queue import TaskQueue
 from .zone_manager import ZoneManager
 
+
+# ════════════════════════════════════════════════════════════
+# CONFIG
+# ════════════════════════════════════════════════════════════
+
 # ── 모드 설정 ──────────────────────────────────────────────────
 # "zone"     : storage_zone = zone_1~16, 직접 이동
 # "waypoint" : storage_zone = rack_1~3,  settings.py WAYPOINTS 경유
@@ -63,6 +68,11 @@ ZONES: dict[str, str] = {
 ZONES.update({f"zone_{i}": "free" for i in range(1, 17)})
 
 LOAD_WAIT_ZONES = {"load_wait_1", "load_wait_2"}
+
+
+# ════════════════════════════════════════════════════════════
+# DOMAIN MODEL
+# ════════════════════════════════════════════════════════════
 
 # ── 태스크 상태 머신 ───────────────────────────────────────────
 class TaskState(str, Enum):
@@ -111,6 +121,10 @@ class Task:
         }
 
 
+# ════════════════════════════════════════════════════════════
+# GLOBAL STATE
+# ════════════════════════════════════════════════════════════
+
 # ── 전역 저장소 ────────────────────────────────────────────────
 tasks: dict[str, Task] = {}
 _lock = threading.Lock()
@@ -125,6 +139,10 @@ _dispatch_queue = TaskQueue()   # jetcobot1 + storage_zone 대기
 _pinky_queue    = TaskQueue()   # pinky + load_wait 대기
 _wait_queue     = TaskQueue()   # PINKY_WAIT_INCOMING 대기
 
+
+# ════════════════════════════════════════════════════════════
+# ROS2 NODE
+# ════════════════════════════════════════════════════════════
 
 # ── ROS2 액션 클라이언트 노드 ──────────────────────────────────
 class TaskManagerNode(Node):
@@ -199,6 +217,10 @@ class TaskManagerNode(Node):
             _advance(task, robot_id, event)
 
 
+# ════════════════════════════════════════════════════════════
+# ORCHESTRATION
+# ════════════════════════════════════════════════════════════
+
 # ── 헬퍼 ──────────────────────────────────────────────────────
 def _set_robot_busy(robot_id: str, task_id: str):
     ROBOTS[robot_id]["status"]  = "busy"
@@ -246,7 +268,7 @@ def _is_any_pinky_incoming_to_load_wait(exclude_robot_id: str) -> bool:
     return False
 
 
-# ── 태스크 디스패치 ────────────────────────────────────────────
+# ── 디스패치 ──────────────────────────────────────────────────
 def _try_dispatch(task: Task) -> bool:
     """
     태스크 즉시 실행 시도.
@@ -329,7 +351,7 @@ def _try_depart_to_storage(task: Task) -> bool:
     return True
 
 
-# ── 상태 전이 엔진 ────────────────────────────────────────────
+# ── 상태 전이 ─────────────────────────────────────────────────
 def _advance(task: Task, robot_id: str, event: str):
     s = task.state
 
@@ -405,14 +427,19 @@ def _advance(task: Task, robot_id: str, event: str):
         task.record(f"[무시] {robot_id} / {event} (현재 상태: {s})")
 
 
-# ── FastAPI ────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════
+# HTTP API
+# ════════════════════════════════════════════════════════════
+
 app = FastAPI(title="Task Manager")
 
 
+# ── 요청 모델 ─────────────────────────────────────────────────
 class TaskRequest(BaseModel):
     storage_zone: str
 
 
+# ── 태스크 라우트 ─────────────────────────────────────────────
 def _valid_storage_zones() -> set[str]:
     if ROUTING_MODE == "waypoint":
         return {"rack_1", "rack_2", "rack_3"}
@@ -462,6 +489,7 @@ def list_tasks():
     return [t.to_dict() for t in tasks.values()]
 
 
+# ── 로봇·존 라우트 ────────────────────────────────────────────
 @app.get("/robots")
 def get_robots():
     return ROBOTS
@@ -472,6 +500,7 @@ def get_zones():
     return ZONES
 
 
+# ── 모드·디버그 라우트 ────────────────────────────────────────
 @app.get("/mode")
 def get_mode():
     return {"routing_mode": ROUTING_MODE}
@@ -519,7 +548,10 @@ def debug():
     }
 
 
-# ── 진입점 ────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════
+# ENTRY POINT
+# ════════════════════════════════════════════════════════════
+
 def ros_spin():
     try:
         executor = MultiThreadedExecutor()

@@ -32,7 +32,7 @@ class SlamManager:
 
         self.log.info("SLAM", "SlamManager 초기화 완료")
 
-    # ── 모드 선택 ──────────────────────────────────
+    # ── 모드 선택 ──────────────────────────────────────────────
     def start_mapping(self):
         """새 지도 생성 모드"""
         self.log.info("SLAM", "매핑 모드 시작...")
@@ -64,6 +64,7 @@ class SlamManager:
         ])
         self.log.info("SLAM", f"지도 저장: {save}.yaml")
 
+    # ── 내부 헬퍼 ──────────────────────────────────────────────
     def _write_slam_params(self) -> str:
         """slam_toolbox용 params yaml을 /tmp에 생성하고 경로 반환"""
         import tempfile, yaml
@@ -93,13 +94,13 @@ class SlamManager:
             self._process = None
             self.log.info("SLAM", "SLAM 종료")
 
-    # ── 콜백 ───────────────────────────────────────
+    # ── 콜백 ───────────────────────────────────────────────────
     def _on_map(self, msg):
         self.map = msg
         self.log.debug("SLAM",
             f"지도 수신 ({msg.info.width}x{msg.info.height})")
 
-    # ── 프로퍼티 ───────────────────────────────────
+    # ── 프로퍼티 ───────────────────────────────────────────────
     @property
     def is_ready(self):
         return self.map is not None
