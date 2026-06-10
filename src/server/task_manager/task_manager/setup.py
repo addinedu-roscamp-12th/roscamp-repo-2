@@ -19,6 +19,7 @@ setup(
     entry_points={
         "console_scripts": [
             "task_manager = task_manager.task_manager:main",
+            "task_manager_pinky_test = task_manager.task_manager_pinky_test:main",
         ],
     },
 )

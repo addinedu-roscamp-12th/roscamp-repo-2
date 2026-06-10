@@ -13,12 +13,6 @@ OLLAMA_URL        = os.getenv("OLLAMA_URL", "http://localhost:11434")
 TASK_MANAGER_URL  = os.getenv("TASK_MANAGER_URL", "http://localhost:8090")
 MODEL             = os.getenv("MODEL", "qwen2.5:3b")  # 파인튜닝 후 pinky-warehouse로 변경
 
-ROBOT_URLS = {
-    "pinky1": "http://192.168.1.81:8001",
-    "pinky2": "http://192.168.1.81:8002",
-}
-
-
 def _get_routing_mode() -> str:
     """task_manager에서 현재 라우팅 모드를 조회."""
     try:
@@ -89,28 +83,25 @@ def ask_llm(text: str, mode: str = "zone") -> str:
     return resp.json()["message"]["content"]
 
 
-def forward_to_robot(robot: str, cmd: dict) -> str:
-    base_url = ROBOT_URLS.get(robot)
-    if base_url is None:
-        return f"알 수 없는 로봇: {robot}. 사용 가능: {list(ROBOT_URLS.keys())}"
-
+def forward_navigate_to_task_manager(robot: str, cmd: dict) -> str:
     if cmd.get("action") == "unknown":
         return f"이해 불가: {cmd.get('parameters', {}).get('reason', '')}"
 
+    location = cmd.get("parameters", {}).get("location", "home")
     try:
         resp = requests.post(
-            f"{base_url}/command",
-            json={"action": cmd["action"], "parameters": cmd.get("parameters", {})},
+            f"{TASK_MANAGER_URL}/navigate",
+            json={"robot_id": robot, "location": location},
             timeout=5,
         )
         resp.raise_for_status()
-        return f"{robot} → {resp.json()}"
+        return f"{robot} → navigate({location}) 명령 전송"
     except requests.exceptions.ConnectionError:
-        return f"{robot} 연결 실패 ({base_url})"
+        return f"태스크매니저 연결 실패 ({TASK_MANAGER_URL})"
     except requests.exceptions.Timeout:
-        return f"{robot} 응답 없음 (timeout)"
+        return f"태스크매니저 응답 없음 (timeout)"
     except Exception as e:
-        return f"{robot} 오류: {e}"
+        return f"태스크매니저 오류: {e}"
 
 
 app = FastAPI()
@@ -161,7 +152,7 @@ async def command(req: CommandReq):
         if cmd.get("action") == "inbound_task":
             result = forward_to_task_manager(cmd)
         else:
-            result = forward_to_robot(req.robot, cmd)
+            result = forward_navigate_to_task_manager(req.robot, cmd)
 
         return {"ok": True, "mode": mode, "llm_json": cmd, "result": result}
 
@@ -176,13 +167,13 @@ async def command(req: CommandReq):
 
 @app.get("/status/{robot}")
 async def status(robot: str):
-    base_url = ROBOT_URLS.get(robot)
-    if base_url is None:
-        return JSONResponse(status_code=404,
-                            content={"ok": False, "error": f"알 수 없는 로봇: {robot}"})
     try:
-        resp = requests.get(f"{base_url}/status", timeout=3)
-        return resp.json()
+        resp = requests.get(f"{TASK_MANAGER_URL}/robots", timeout=3)
+        robots = resp.json()
+        if robot not in robots:
+            return JSONResponse(status_code=404,
+                                content={"ok": False, "error": f"알 수 없는 로봇: {robot}"})
+        return {"ok": True, "robot": robot, "status": robots[robot]}
     except Exception as e:
         return JSONResponse(status_code=503, content={"ok": False, "error": str(e)})
 
