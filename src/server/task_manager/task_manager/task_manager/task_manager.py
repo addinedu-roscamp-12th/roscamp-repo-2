@@ -127,6 +127,7 @@ class Task:
 
 # ── 전역 저장소 ────────────────────────────────────────────────
 tasks: dict[str, Task] = {}
+_direct_commands: dict[str, dict] = {}  # direct_ 명령 추적용
 _lock = threading.Lock()
 ros_node: "TaskManagerNode" = None
 _cmd_queue: queue.Queue = queue.Queue()
@@ -210,6 +211,14 @@ class TaskManagerNode(Node):
         message = result.message
         print(f"[RESULT] robot={robot_id}  event={event!r}  message={message!r}  task={task_id[:8]}")
         with _lock:
+            if task_id.startswith("direct_"):
+                direct = _direct_commands.pop(task_id, None)
+                if direct and event == "arrived":
+                    ROBOTS[robot_id]["target_zone"] = None
+                    ROBOTS[robot_id]["current_zone"] = direct["location"]
+                    if direct["location"] == "home" and ROBOTS[robot_id].get("type") == "pinky":
+                        _dispatcher.on_home_arrived(ROBOTS, robot_id)
+                return
             task = tasks.get(task_id)
             if task is None:
                 return
@@ -500,6 +509,9 @@ def navigate(req: NavigateRequest):
     if req.robot_id not in ROBOTS:
         raise HTTPException(400, f"알 수 없는 로봇: {req.robot_id}. 사용 가능: {list(ROBOTS.keys())}")
     task_id = f"direct_{uuid.uuid4()}"
+    with _lock:
+        ROBOTS[req.robot_id]["target_zone"] = req.location
+        _direct_commands[task_id] = {"robot_id": req.robot_id, "location": req.location}
     _send_command(req.robot_id, "navigate", {"location": req.location}, task_id)
     return {"ok": True, "robot_id": req.robot_id, "location": req.location}
 
