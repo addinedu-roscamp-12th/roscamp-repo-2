@@ -128,6 +128,7 @@ class Task:
 # ── 전역 저장소 ────────────────────────────────────────────────
 tasks: dict[str, Task] = {}
 _direct_commands: dict[str, dict] = {}  # direct_ 명령 추적용
+_home_stack: list[str] = []             # 홈 도착 순서 스택 [inner, ..., outer]
 _lock = threading.Lock()
 ros_node: "TaskManagerNode" = None
 _cmd_queue: queue.Queue = queue.Queue()
@@ -217,7 +218,7 @@ class TaskManagerNode(Node):
                     ROBOTS[robot_id]["target_zone"] = None
                     ROBOTS[robot_id]["current_zone"] = direct["location"]
                     if direct["location"] == "home" and ROBOTS[robot_id].get("type") == "pinky":
-                        _dispatcher.on_home_arrived(ROBOTS, robot_id)
+                        _home_push(robot_id)
                 return
             task = tasks.get(task_id)
             if task is None:
@@ -267,6 +268,22 @@ def _send_command(robot_id: str, action: str, parameters: dict, task_id: str):
     _cmd_queue.put({"robot_id": robot_id, "action": action,
                     "parameters": parameters, "task_id": task_id})
 
+def _home_push(pinky_id: str):
+    """핑키 홈 도착 → 스택에 추가 (top = 바깥쪽)."""
+    if pinky_id not in _home_stack:
+        _home_stack.append(pinky_id)
+
+def _home_pop(pinky_id: str):
+    """핑키 홈 출발 → 스택에서 제거."""
+    if pinky_id in _home_stack:
+        _home_stack.remove(pinky_id)
+
+def _home_position(pinky_id: str) -> str | None:
+    """스택 위치로 안쪽/바깥쪽 반환."""
+    if pinky_id not in _home_stack:
+        return None
+    return "outer" if _home_stack[-1] == pinky_id else "inner"
+
 def _is_any_pinky_incoming_to_load_wait(exclude_robot_id: str) -> bool:
     """다른 핑키가 load_wait 존으로 이동 중인지 확인."""
     for robot_id, robot in ROBOTS.items():
@@ -310,7 +327,7 @@ def _dispatch_pinky_to_load_wait(task: Task) -> bool:
     if task.pinky_id is not None:  # 이미 핑키 배정됨
         return False
 
-    pinky_id = _dispatcher.pick_pinky(ROBOTS)
+    pinky_id = _dispatcher.pick_pinky(ROBOTS, _home_stack)
     if pinky_id is None:
         return False
 
@@ -326,6 +343,7 @@ def _dispatch_pinky_to_load_wait(task: Task) -> bool:
     task.load_wait_zone = load_wait
     task.state          = TaskState.PINKY_TO_LOAD_WAIT
     _set_robot_busy(pinky_id, task.task_id)
+    _home_pop(pinky_id)
     ROBOTS[pinky_id]["target_zone"] = load_wait
 
     task.record(f"{pinky_id} → {load_wait} 이동 명령")
@@ -423,7 +441,7 @@ def _advance(task: Task, robot_id: str, event: str):
         pinky["current_zone"] = "home"
         pinky["target_zone"]  = None
         _set_robot_idle(pinky_id)
-        _dispatcher.on_home_arrived(ROBOTS, pinky_id)
+        _home_push(pinky_id)
         task.state = TaskState.DONE
         task.record(f"태스크 완료 — {task.storage_zone} 점유, {pinky_id} 홈 복귀")
         _pinky_queue.drain(_dispatch_pinky_to_load_wait)
@@ -556,6 +574,10 @@ def debug():
     return {
         "routing_mode":  ROUTING_MODE,
         "robots":        ROBOTS,
+        "home_stack":    {
+            "order":     _home_stack,  # [inner, ..., outer]
+            "positions": {pid: _home_position(pid) for pid in _home_stack},
+        },
         "zones":         {k: v for k, v in ZONES.items() if v != "free"},
         "tasks": [
             {
