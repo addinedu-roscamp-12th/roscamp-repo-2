@@ -123,15 +123,16 @@ class NavManager:
         self._send_action(
             self.nav_client, goal, callback)
 
-    def go_to_location(self, name: str, callback=None):
-        """장소 이름으로 이동"""
+    def go_to_location(self, name: str, callback=None, override_yaw=None):
+        """장소 이름으로 이동. override_yaw 지정 시 해당 yaw로 goal 전송 (Nav2 최종 회전 억제용)."""
         if name not in LOCATIONS:
             self.log.error("NAV", f"모르는 장소: {name}")
             if callback:
                 callback(False)
             return False
         loc = LOCATIONS[name]
-        self.go_to(loc["x"], loc["y"], loc["yaw"], callback)
+        yaw = override_yaw if override_yaw is not None else loc["yaw"]
+        self.go_to(loc["x"], loc["y"], yaw, callback)
         return True
 
     def go_through(self, waypoints: list, callback=None):

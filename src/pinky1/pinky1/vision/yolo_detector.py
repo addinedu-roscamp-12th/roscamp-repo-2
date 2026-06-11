@@ -26,6 +26,8 @@ class YoloDetector:
         self.conf    = YOLO_CONFIG["confidence"]
         self.classes = YOLO_CONFIG.get("classes", None)
 
+        self.latest_frame = None  # 메인 스레드에서 imshow할 최신 프레임
+
         # 외부 콜백 등록
         self.on_person_detected = None
         self.on_box_detected    = None
@@ -43,7 +45,9 @@ class YoloDetector:
             image_msg, desired_encoding="bgr8")
         results = self.model(
             frame, conf=self.conf,
-            classes=self.classes, verbose=False)
+            classes=self.classes, imgsz=320, verbose=False)
+
+        self.latest_frame = results[0].plot()
 
         detections = []
 

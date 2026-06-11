@@ -8,6 +8,7 @@ from sensor_msgs.msg import (
     BatteryState, CameraInfo, Range
 )
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from std_msgs.msg import UInt16MultiArray
 
 from pinky1.config.settings import ROBOT_INTERFACES
@@ -53,6 +54,7 @@ class SensorManager:
         self.battery        = None
         self.us_range       = None
         self.ir_range       = None
+        self.amcl_pose      = None
         self.robot_status   = None
         self.mission_status = None
         self.person_detected= None
@@ -85,6 +87,8 @@ class SensorManager:
             self._cb_us,     10)
         sub(UInt16MultiArray, f"{ns}/ir_sensor/range",
             self._cb_ir,     10)
+        sub(PoseWithCovarianceStamped, "/pinky1/amcl_pose",
+            self._cb_amcl,   10)
 
         # 로봇 상태 (pinky_interfaces)
         if _PINKY_AVAILABLE:
@@ -134,6 +138,9 @@ class SensorManager:
 
     def _cb_ir(self, msg):
         self.ir_range = msg
+
+    def _cb_amcl(self, msg):
+        self.amcl_pose = msg
 
     # 로봇 상태
     def _cb_robot_status(self, msg):

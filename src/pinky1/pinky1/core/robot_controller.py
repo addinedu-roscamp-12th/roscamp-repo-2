@@ -2,22 +2,24 @@
 # 메인 컨트롤러 — 모든 모듈 통합
 
 import json
+import math
 import threading
 
+import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.action import ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
+from tf2_ros import Buffer, TransformListener
 
 try:
-    from pinky_msgs.action import RobotCommand
+    from msgs.action import RobotCommand
     _PINKY_MSGS_AVAILABLE = True
 except ImportError:
     _PINKY_MSGS_AVAILABLE = False
 
-from pinky1.config.settings import ROBOT_CONFIG, ARUCO_CONFIG, WAYPOINTS
+from pinky1.config.settings import ROBOT_CONFIG, ARUCO_CONFIG, ZONE_DEPART_POINTS, ARRIVAL_US_STOP
 from pinky1.navigation.nav_manager import NavManager
-from pinky1.navigation.slam_manager import SlamManager
 from pinky1.navigation.line_tracer import LineTracer
 from pinky1.sensors.sensor_manager import SensorManager
 from pinky1.utils.logger import RobotLogger
@@ -32,8 +34,7 @@ class RobotController(Node):
     ─────────────────────────────────────────
     [로봇 제공] SensorManager  — 모든 센서 토픽 수신
     [로봇 제공] NavManager     — Nav2 액션 + 로봇 서비스
-    [내가 추가] SlamManager    — SLAM 지도 생성/관리
-    [내가 추가] ArucoDetector  — ArUco 마커 감지
+[내가 추가] ArucoDetector  — ArUco 마커 감지
     [내가 추가] YoloDetector   — 사람/박스 감지
     [ROS2 Action] RobotCommand — 명령 수신 (Task Manager → 로봇)
     """
@@ -52,9 +53,9 @@ class RobotController(Node):
         # ── 모듈 초기화 ────────────────────────────
         self.sensors       = SensorManager(self, self.ns)
         self.nav           = NavManager(self, self.ns)
-        self.slam          = SlamManager(self)
         self.line_tracer   = LineTracer(self, self.sensors, self.nav,
-                                       angular_gain=0.25, angular_d_gain=0.10)
+                                       angular_gain=0.15, angular_d_gain=0.20,
+                                       stop_distance=0.065)
         self.aruco         = ArucoDetector(self)
         self.yolo          = YoloDetector(self)
         self._docking              = False
@@ -65,7 +66,24 @@ class RobotController(Node):
         self._nav_event            = None
         self._nav_event_result     = False
         self._line_trace_on_arrive = False  # home 도착 시 라인트레이싱 자동 시작
-        self.visual_dock        = VisualDock(self)
+        self._current_location     = None   # 마지막으로 도착 완료된 위치
+        self._target_location      = None   # 현재 이동 중인 목적지
+        self._align_yaw            = None   # Nav2 완료 후 정렬할 map 기준 yaw
+        self._rotate_timer         = None   # 회전 타이머
+        self._rotate_end_time      = 0.0    # 회전 종료 시각 (sec)
+        self._pending_navigate     = None   # 회전/전진 후 실행할 목적지
+        self._forward_timer        = None   # 전진 타이머
+        self._forward_end_time     = 0.0    # 전진 종료 시각 (sec, 폴백용)
+        self._forward_target_dist  = 0.0    # 목표 이동 거리 (m)
+        self._forward_start_pos    = None   # 출발 AMCL 위치
+        self._us_forward_timer     = None   # 초음파 전진 타이머
+        self._us_forward_done_cb   = None   # 초음파 정지 후 콜백
+        self._yaw_rotate_target    = None
+        self._yaw_rotate_timer     = None
+        self._yaw_rotate_done_cb   = None
+        self._tf_buf               = Buffer()
+        self._tf_listener          = TransformListener(self._tf_buf, self)
+        self.visual_dock        = VisualDock(self, self.sensors)
         self._cmd_pub           = self.create_publisher(Twist, f"/{self.ns}/cmd_vel", 10)
 
         # ── 콜백 연결 ──────────────────────────────
@@ -91,7 +109,7 @@ class RobotController(Node):
                 callback_group=ReentrantCallbackGroup())
             self.log.info("SYS", "Action Server 시작 → robot_command")
         else:
-            self.log.warn("SYS", "pinky_msgs 없음 — Action Server 비활성화")
+            self.log.warn("SYS", "msgs 없음 — Action Server 비활성화")
 
         self.log.info("SYS", "모든 모듈 초기화 완료")
 
@@ -190,6 +208,10 @@ class RobotController(Node):
         return result
 
     def _send_callback(self, event: str):
+        if event == "arrived":
+            self._current_location = self._target_location
+        elif event == "error":
+            self._current_location = None
         if self._nav_event is not None:
             self._nav_event_result = (event in ("arrived", "parked"))
             self._nav_event.set()
@@ -216,14 +238,245 @@ class RobotController(Node):
             self._send_callback("arrived")
             return
 
+        # align_yaw 파라미터 있으면 yaw 정렬 후 arrived
+        if self._align_yaw is not None:
+            target = self._align_yaw
+            self._align_yaw = None
+            self.log.info("SYS", f"도착 → yaw {math.degrees(target):.1f}° 정렬 시작")
+            self._start_rotate_to_yaw(target,
+                done_cb=lambda: self._send_callback("arrived"))
+            return
+
+        # 도착 후 초음파 감지까지 전진 후 yaw 정렬
+        if self._target_location in ARRIVAL_US_STOP:
+            self.log.info("SYS",
+                f"{self._target_location} 도착 → 초음파 6.5cm 감지까지 전진")
+            self._start_us_forward(
+                done_cb=lambda: self._start_rotate_to_yaw(
+                    math.pi, done_cb=lambda: self._send_callback("arrived")))
+            return
+
         if self._target_marker_id is None or self._docking:
             self._send_callback("arrived")
             return
         self.log.info("SYS",
-            f"도착 — 마커 {self._target_marker_id} 탐색 시작")
-        self._searching = True
-        if self._search_timer is None:
-            self._search_timer = self.create_timer(0.1, self._search_spin)
+            f"도착 — 마커 {self._target_marker_id} 감지 대기 중")
+
+    def _start_right_turn_90(self):
+        """제자리 오른쪽 90도 회전 (angular.z 음수)."""
+        angular_speed = 0.5                       # rad/s
+        duration      = (math.pi / 2) / angular_speed  # 약 3.14초
+        now_sec       = self.get_clock().now().nanoseconds / 1e9
+        self._rotate_end_time = now_sec + duration
+
+        if self._rotate_timer is None:
+            self._rotate_timer = self.create_timer(0.1, self._rotate_spin)
+
+    def _rotate_spin(self):
+        now_sec = self.get_clock().now().nanoseconds / 1e9
+        if now_sec >= self._rotate_end_time:
+            self._stop_rotate()
+            self.log.info("SYS", "오른쪽 90도 회전 완료")
+            self._send_callback("arrived")
+            return
+        msg = Twist()
+        msg.angular.z = -0.5
+        self._cmd_pub.publish(msg)
+
+    def _stop_rotate(self):
+        if self._rotate_timer is not None:
+            self._rotate_timer.cancel()
+            self._rotate_timer = None
+        msg = Twist()
+        self._cmd_pub.publish(msg)
+
+    def _start_left_turn_90(self):
+        """제자리 왼쪽 90도 회전 (angular.z 양수)."""
+        angular_speed = 0.5
+        duration      = (math.pi / 2) / angular_speed
+        now_sec       = self.get_clock().now().nanoseconds / 1e9
+        self._rotate_end_time = now_sec + duration
+        if self._rotate_timer is None:
+            self._rotate_timer = self.create_timer(0.1, self._left_rotate_spin)
+
+    def _left_rotate_spin(self):
+        now_sec = self.get_clock().now().nanoseconds / 1e9
+        if now_sec >= self._rotate_end_time:
+            self._stop_rotate()
+            self.log.info("SYS", "왼쪽 90도 회전 완료 → 홈 복귀 이동 시작")
+            location = self._pending_navigate
+            self._pending_navigate = None
+            self._do_navigate(location)
+            return
+        msg = Twist()
+        msg.angular.z = 0.5
+        self._cmd_pub.publish(msg)
+
+    def _dist_to_depart_point(self, depart_location: str) -> float:
+        """현재 AMCL 위치에서 출발지 중간 좌표까지 거리 반환. 읽기 실패 시 0.20m."""
+        target = ZONE_DEPART_POINTS.get(depart_location)
+        if target is None:
+            return 0.20
+        try:
+            pose = self.sensors.amcl_pose
+            if pose is None:
+                return 0.20
+            dx = target["x"] - pose.pose.pose.position.x
+            dy = target["y"] - pose.pose.pose.position.y
+            return math.sqrt(dx * dx + dy * dy)
+        except Exception:
+            return 0.20
+
+    def _start_forward(self, distance: float, speed: float = 0.1):
+        """cmd_vel로 지정 거리만큼 전진. AMCL 기준 이동 거리 측정, 폴백은 타이머."""
+        self._forward_target_dist = distance
+        self._forward_start_pos   = self._amcl_xy()
+        # 폴백: AMCL 없을 때 시간 기반
+        duration = distance / speed
+        now_sec  = self.get_clock().now().nanoseconds / 1e9
+        self._forward_end_time = now_sec + duration * 2.0  # 여유 2배
+        if self._forward_timer is None:
+            self._forward_timer = self.create_timer(0.05, self._forward_tick)
+
+    def _forward_tick(self):
+        done = False
+        if self._forward_start_pos is not None:
+            cur = self._amcl_xy()
+            if cur is not None:
+                dx = cur[0] - self._forward_start_pos[0]
+                dy = cur[1] - self._forward_start_pos[1]
+                traveled = math.sqrt(dx * dx + dy * dy)
+                done = traveled >= self._forward_target_dist
+        if not done:
+            # AMCL 없으면 타이머 폴백
+            now_sec = self.get_clock().now().nanoseconds / 1e9
+            if self._forward_start_pos is None and now_sec >= self._forward_end_time:
+                done = True
+
+        if done:
+            msg = Twist()
+            self._cmd_pub.publish(msg)
+            if self._forward_timer is not None:
+                self._forward_timer.cancel()
+                self._forward_timer = None
+            self._forward_start_pos = None
+            location = self._pending_navigate
+            self._pending_navigate = None
+            if location is None:
+                self.log.info("SYS", "전진 완료 → arrived 반환")
+                self._send_callback("arrived")
+            else:
+                self.log.info("SYS", f"전진 완료 → Nav2 시작 ({location})")
+                self._do_navigate(location)
+            return
+        msg = Twist()
+        msg.linear.x = 0.1
+        self._cmd_pub.publish(msg)
+
+    def _amcl_xy(self):
+        """현재 AMCL map 좌표 (x, y) 반환. 없으면 None."""
+        pose = self.sensors.amcl_pose
+        if pose is None:
+            return None
+        p = pose.pose.pose.position
+        return (p.x, p.y)
+
+    def _start_us_forward(self, done_cb=None):
+        """초음파 ≤ 6.5cm 될 때까지 전진."""
+        self._us_forward_done_cb = done_cb
+        if self._us_forward_timer is None:
+            self._us_forward_timer = self.create_timer(0.05, self._us_forward_tick)
+
+    def _us_forward_tick(self):
+        us = self.sensors.us_distance
+        if us is not None and us <= 0.065:
+            msg = Twist()
+            self._cmd_pub.publish(msg)
+            self._us_forward_timer.cancel()
+            self._us_forward_timer = None
+            self.log.info("SYS", f"초음파 정지 {us*100:.1f}cm")
+            cb = self._us_forward_done_cb
+            self._us_forward_done_cb = None
+            if cb:
+                cb()
+            return
+        msg = Twist()
+        msg.linear.x = 0.05
+        self._cmd_pub.publish(msg)
+
+    def _start_rotate_to_yaw(self, target_yaw: float, done_cb=None):
+        self._yaw_rotate_target  = target_yaw
+        self._yaw_rotate_done_cb = done_cb
+        if self._yaw_rotate_timer is None:
+            self._yaw_rotate_timer = self.create_timer(0.1, self._yaw_rotate_tick)
+
+    def _yaw_rotate_tick(self):
+        yaw = self._map_yaw()
+        if yaw is None:
+            return
+        diff = self._angle_diff(self._yaw_rotate_target, yaw)
+        if abs(diff) <= math.radians(3.0):
+            msg = Twist()
+            self._cmd_pub.publish(msg)
+            self._yaw_rotate_timer.cancel()
+            self._yaw_rotate_timer = None
+            self.log.info("SYS",
+                f"yaw 정렬 완료 → {math.degrees(self._yaw_rotate_target):.1f}°")
+            cb = self._yaw_rotate_done_cb
+            self._yaw_rotate_done_cb = None
+            self._yaw_rotate_target  = None
+            if cb:
+                cb()
+            return
+        speed = max(0.15, min(0.5, abs(diff) * 0.5))
+        msg = Twist()
+        msg.angular.z = math.copysign(speed, diff)
+        self._cmd_pub.publish(msg)
+
+    def _map_yaw(self) -> float | None:
+        try:
+            t = self._tf_buf.lookup_transform(
+                "map", f"{self.ns}/base_footprint",
+                rclpy.time.Time())
+            q = t.transform.rotation
+            siny = 2.0 * (q.w * q.z + q.x * q.y)
+            cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+            return math.atan2(siny, cosy)
+        except Exception:
+            pose = self.sensors.amcl_pose
+            if pose is not None:
+                q = pose.pose.pose.orientation
+                siny = 2.0 * (q.w * q.z + q.x * q.y)
+                cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+                return math.atan2(siny, cosy)
+            return None
+
+    def _angle_diff(self, a: float, b: float) -> float:
+        d = a - b
+        while d > math.pi:
+            d -= 2 * math.pi
+        while d < -math.pi:
+            d += 2 * math.pi
+        return d
+
+    def _do_navigate(self, location: str):
+        if self._align_yaw is not None:
+            # align_yaw 있으면 현재 yaw로 Nav2 goal 설정 → Nav2가 최종 회전 시도 안 함
+            current_yaw = self._current_map_yaw()
+            self.nav.go_to_location(location, callback=self._on_nav_done,
+                                    override_yaw=current_yaw)
+        else:
+            self.nav.go_to_location(location, callback=self._on_nav_done)
+
+    def _current_map_yaw(self) -> float | None:
+        """현재 map 기준 yaw. AMCL 폴백."""
+        pose = self.sensors.amcl_pose
+        if pose is None:
+            return None
+        q = pose.pose.pose.orientation
+        siny = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        return math.atan2(siny, cosy)
 
     def _search_spin(self):
         if not self._searching:
@@ -259,7 +512,10 @@ class RobotController(Node):
             self._target_marker_id     = None
             self._task_id              = cmd.get("task_id", "")
             self._line_trace_on_arrive = (params.get("location") == "home")
-            location = params.get("location", "home")
+            self._align_yaw            = params.get("align_yaw", None)
+            location      = params.get("location", "home")
+            prev_location = self._current_location
+            self._target_location = location
             if location == "stop":
                 self.nav.cancel_navigation()
                 self.nav.emergency_stop(activate=True)
@@ -276,12 +532,22 @@ class RobotController(Node):
             if self._target_marker_id is not None:
                 self.log.info("SYS",
                     f"목적지 {location} → 마커 {self._target_marker_id} 정밀 정차 대기")
-            if location in WAYPOINTS:
+            # zone_1/2/3 출발 → 홈 복귀 시 왼쪽 90도 회전 후 이동
+            if location == "home" and prev_location in ("zone_1", "zone_2", "zone_3"):
                 self.log.info("SYS",
-                    f"웨이포인트 경로 이동 ({len(WAYPOINTS[location])}개)")
-                self.nav.go_through(WAYPOINTS[location], callback=self._on_nav_done)
-            else:
-                self.nav.go_to_location(location, callback=self._on_nav_done)
+                    f"{prev_location} 출발 → 홈 복귀 전 왼쪽 90도 회전")
+                self._pending_navigate = location
+                self._start_left_turn_90()
+                return
+            # 출발지가 ZONE_DEPART_POINTS에 있으면 cmd_vel 전진 후 Nav2 시작
+            if prev_location in ZONE_DEPART_POINTS:
+                dist = self._dist_to_depart_point(prev_location)
+                self.log.info("SYS",
+                    f"{location} 이동 → {prev_location} 출발점까지 {dist:.3f}m 전진 후 Nav2 시작")
+                self._pending_navigate = location
+                self._start_forward(distance=dist, speed=0.1)
+                return
+            self._do_navigate(location)
 
         elif action == "dock":
             self.nav.dock_to_marker(
@@ -303,20 +569,6 @@ class RobotController(Node):
         elif action == "resume":
             self.nav.emergency_stop(activate=False)
             self.nav.set_led(0, 255, 0)
-
-        # SLAM
-        elif action == "start_mapping":
-            self.slam.start_mapping()
-
-        elif action == "start_localization":
-            self.slam.start_localization(
-                params.get("path", None))
-
-        elif action == "stop_slam":
-            self.slam.stop()
-
-        elif action == "save_map":
-            self.slam.save_map(params.get("path", None))
 
         # 표현 / 조명
         elif action == "set_emotion":

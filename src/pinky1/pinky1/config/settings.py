@@ -34,29 +34,15 @@ LOCATIONS = {
 
     # ── 상차 대기 구역 (두 모드 공통) ────────────────
     # TODO: 실제 지도 좌표로 교체
-    "load_wait_1":  {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
+    "load_wait_1":  {"x": -1.0442, "y": -0.1919, "yaw": 3.1416},
     "load_wait_2":  {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
-
-    # ── 렉 구역 (waypoint 모드 전용) ─────────────────
-    # TODO: 실제 지도 좌표로 교체
-    "rack_1":       {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
-    "rack_2":       {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
-    "rack_3":       {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
-
-    # ── 경로 웨이포인트 (waypoint 모드 경유지) ─────────
-    # TODO: 실제 지도 좌표로 교체
-    "wp_1":         {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
-    "wp_2":         {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
-    "wp_3":         {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
-    "wp_4":         {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
-    "wp_5":         {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
-    "wp_6":         {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
 
     # ── 기존 존 방식 구역 (zone 모드 전용) ───────────
     "loading_zone": {"x": 1.6577, "y": 0.2709, "yaw": -2.6691},
-    "zone_1":       {"x": 1.6577, "y": 0.2709, "yaw": -2.6691},
-    "zone_2":       {"x": 1.6577, "y": 0.2709, "yaw": -2.6691},
-    "zone_3":       {"x": 1.6577, "y": 0.2709, "yaw": -2.6691},
+    "outbound_zone": {"x": 0.0072, "y": -0.7631, "yaw": -0.0224},
+    "zone_1":       {"x": -0.4957, "y":  0.0082, "yaw": 0.0},
+    "zone_2":       {"x": -0.5464, "y": -0.4115, "yaw": 0.0},
+    "zone_3":       {"x": -0.5128, "y": -0.7697, "yaw": 0.0},
     "zone_4":       {"x": 1.6577, "y": 0.2709, "yaw": -2.6691},
     "zone_5":       {"x": 1.6577, "y": 0.2709, "yaw": -2.6691},
     "zone_6":       {"x": 1.6577, "y": 0.2709, "yaw": -2.6691},
@@ -72,54 +58,6 @@ LOCATIONS = {
     "zone_16":      {"x": 1.6577, "y": 0.2709, "yaw": -2.6691},
 }
 
-# ── 웨이포인트 경로 (지도 기준) ───────────────────────
-# 이 dict에 등록된 목적지는 NavigateThroughPoses(경유지 순서 이동)를 사용.
-# 등록되지 않은 목적지는 NavigateToPose(직접 이동)를 사용.
-#
-# waypoint 모드 사용 시:
-#   · load_wait_1/2 : HOME → 경유지 → load_wait 최종 도착 포즈
-#   · rack_1/2/3    : load_wait → 경유지 → rack 최종 도착 포즈
-#   마지막 항목이 실제 목적지 포즈가 되어야 함.
-#
-# TODO: 실제 지도 좌표로 교체
-WAYPOINTS = {
-    # ── HOME → load_wait_1 경로 ──────────────────────
-    "load_wait_1": [
-        LOCATIONS["wp_1"],
-        LOCATIONS["wp_3"],
-        LOCATIONS["load_wait_1"],
-    ],
-    # ── HOME → load_wait_2 경로 ──────────────────────
-    "load_wait_2": [
-        LOCATIONS["wp_2"],
-        LOCATIONS["wp_4"],
-        LOCATIONS["load_wait_2"],
-    ],
-    # ── load_wait → rack_1 경로 ──────────────────────
-    "rack_1": [
-        LOCATIONS["wp_5"],
-        LOCATIONS["rack_1"],
-    ],
-    # ── load_wait → rack_2 경로 ──────────────────────
-    "rack_2": [
-        LOCATIONS["wp_5"],
-        LOCATIONS["rack_2"],
-    ],
-    # ── load_wait → rack_3 경로 ──────────────────────
-    "rack_3": [
-        LOCATIONS["wp_6"],
-        LOCATIONS["rack_3"],
-    ],
-    # ── 기존 테스트 경로 ──────────────────────────────
-    "zone_A": [
-        {"x": 0.5069,  "y": 1.1749,  "yaw": 1.6246},
-        {"x": 0.3,     "y": 0.8,     "yaw": 1.57},
-        {"x": 0.0,     "y": 0.3,     "yaw": 3.14},
-        {"x": -0.3,    "y": 0.0,     "yaw": -1.57},
-        {"x": -0.6,    "y": -0.5,    "yaw": -1.57},
-        {"x": -1.0361, "y": -0.9091, "yaw": 0.5682},
-    ],
-}
 
 # ════════════════════════════════════════════════════════════
 # 모듈 설정
@@ -131,20 +69,29 @@ ARUCO_CONFIG = {
     "marker_size":       0.1,    # 실제 마커 크기 (m)
     "approach_distance": 0.3,    # 마커 앞 정차 거리 (m)
     "marker_map": {              # 마커ID → 장소 매핑
-        # 0: "loading_zone",
-        # 1: "unloading_zone",
-        # 2: "zone_A",
-        # 3: "zone_B",
-        # 4: "zone_C",
+        0: "load_wait_1",
+        # 1: "load_wait_2",
     },
 }
+
+# ── zone 이동 출발지별 cmd_vel 중간 좌표 ──────────────
+# zone_1/2/3 명령 시 이 좌표까지 cmd_vel 전진 후 Nav2 시작
+# x,y 는 해당 출발지와 동일, yaw만 변경
+ZONE_DEPART_POINTS = {
+    "load_wait_1": {"x": LOCATIONS["load_wait_1"]["x"], "y": LOCATIONS["load_wait_1"]["y"], "yaw": 0.0},
+    "home":        {"x": LOCATIONS["home"]["x"],        "y": LOCATIONS["home"]["y"],        "yaw": 3.1416},
+}
+
+# ── 도착 후 초음파 감지까지 전진할 위치 ──────────────────
+# Nav2 도착 후 초음파 ≤ 6.5cm 될 때까지 cmd_vel 전진
+ARRIVAL_US_STOP = {"outbound_zone"}
 
 # ── YOLO 설정 ──────────────────────────────────────
 YOLO_CONFIG = {
     "model":        "yolov8n.pt",
-    "confidence":   0.6,
-    "enabled":      False,       # 커스텀 모델 준비 후 True로 변경
-    "classes":      [],
+    "confidence":   0.4,
+    "enabled":      False,      # 커스텀 모델 준비 후 True로 변경
+    "classes":      None,       # None = 전체 클래스 감지
 }
 
 # ── Nav2 설정 ──────────────────────────────────────

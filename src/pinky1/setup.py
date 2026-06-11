@@ -21,6 +21,7 @@ setup(
         'console_scripts': [
             'pinky1_node = pinky1.launch.main:run_single',
             'pinky1_get_pose = pinky1.get_pose:main',
+            'rotate_yaw = pinky1.rotate_yaw:main',
         ],
     },
 )
