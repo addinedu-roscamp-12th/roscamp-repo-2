@@ -8,9 +8,9 @@ from sensor_msgs.msg import (
     BatteryState, CameraInfo, Range
 )
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from std_msgs.msg import UInt16MultiArray
 
-from pinky1.config.settings import ROBOT_INTERFACES
 from pinky1.utils.logger import RobotLogger
 
 try:
@@ -53,6 +53,7 @@ class SensorManager:
         self.battery        = None
         self.us_range       = None
         self.ir_range       = None
+        self.amcl_pose      = None
         self.robot_status   = None
         self.mission_status = None
         self.person_detected= None
@@ -85,6 +86,8 @@ class SensorManager:
             self._cb_us,     10)
         sub(UInt16MultiArray, f"{ns}/ir_sensor/range",
             self._cb_ir,     10)
+        sub(PoseWithCovarianceStamped, "/pinky1/amcl_pose",
+            self._cb_amcl,   10)
 
         # 로봇 상태 (pinky_interfaces)
         if _PINKY_AVAILABLE:
@@ -102,7 +105,7 @@ class SensorManager:
             f"센서 구독 완료 (ns={self.ns})")
 
     # ── 콜백 ───────────────────────────────────────────────────
-    # 기본 센서
+    # ── 기본 센서 ──────────────────────────────────────────────
     def _cb_scan(self, msg):
         self.scan = msg
 
@@ -135,7 +138,10 @@ class SensorManager:
     def _cb_ir(self, msg):
         self.ir_range = msg
 
-    # 로봇 상태
+    def _cb_amcl(self, msg):
+        self.amcl_pose = msg
+
+    # ── 로봇 상태 ──────────────────────────────────────────────
     def _cb_robot_status(self, msg):
         self.robot_status = msg
         if self.on_robot_status:
@@ -150,23 +156,6 @@ class SensorManager:
             self.on_person_detected(msg)
 
     # ── 편의 프로퍼티 ──────────────────────────────────────────
-    @property
-    def position(self):
-        """현재 위치 반환 {x, y, z}"""
-        if self.odom is None:
-            return None
-        p = self.odom.pose.pose.position
-        return {"x": round(p.x, 3),
-                "y": round(p.y, 3),
-                "z": round(p.z, 3)}
-
-    @property
-    def battery_pct(self):
-        """배터리 잔량 (%)"""
-        if self.battery is None:
-            return None
-        return round(self.battery.percentage * 100, 1)
-
     @property
     def camera_matrix(self):
         """카메라 내부 파라미터 행렬 (3x3)"""

@@ -89,6 +89,17 @@ class TaskState(str, Enum):
     FAILED               = "failed"
 
 
+class OutboundState(str, Enum):
+    PENDING            = "out_pending"
+    QUEUED             = "out_queued"
+    PINKY_TO_ZONE      = "out_pinky_to_zone"       # 핑키 → zone (yaw=0 정렬 포함)
+    JETCOBOT2_LOADING  = "out_jetcobot2_loading"   # jetcobot2 zone→핑키 상차
+    PINKY_TO_OUTBOUND  = "out_pinky_to_outbound"   # 핑키 → outbound_zone
+    PINKY_TO_HOME      = "out_pinky_to_home"       # 핑키 → home
+    DONE               = "out_done"
+    FAILED             = "out_failed"
+
+
 class Task:
     def __init__(self, task_id: str, storage_zone: str):
         self.task_id        = task_id
@@ -121,6 +132,35 @@ class Task:
         }
 
 
+class OutboundTask:
+    def __init__(self, task_id: str, storage_zone: str):
+        self.task_id      = task_id
+        self.storage_zone = storage_zone
+        self.state        = OutboundState.PENDING
+        self.pinky_id: str | None = None
+        self.jetcobot2_id = "jetcobot2"
+        self.created_at   = datetime.now().isoformat()
+        self.updated_at   = datetime.now().isoformat()
+        self.log: list[str] = []
+
+    def record(self, msg: str):
+        self.log.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+        self.updated_at = datetime.now().isoformat()
+        print(f"[Outbound {self.task_id[:8]}] {msg}")
+
+    def to_dict(self) -> dict:
+        return {
+            "task_id":      self.task_id,
+            "task_type":    "outbound",
+            "state":        self.state,
+            "storage_zone": self.storage_zone,
+            "pinky":        self.pinky_id,
+            "created_at":   self.created_at,
+            "updated_at":   self.updated_at,
+            "log":          self.log,
+        }
+
+
 # ════════════════════════════════════════════════════════════
 # GLOBAL STATE
 # ════════════════════════════════════════════════════════════
@@ -137,9 +177,10 @@ _zone_manager = ZoneManager(ZONES)
 _dispatcher   = Dispatcher()
 
 # 큐 분리: 역할별로 독립 관리하여 잘못된 drain 방지
-_dispatch_queue = TaskQueue()   # jetcobot1 + storage_zone 대기
-_pinky_queue    = TaskQueue()   # pinky + load_wait 대기
-_wait_queue     = TaskQueue()   # PINKY_WAIT_INCOMING 대기
+_dispatch_queue  = TaskQueue()   # jetcobot1 + storage_zone 대기
+_pinky_queue     = TaskQueue()   # pinky + load_wait 대기
+_wait_queue      = TaskQueue()   # PINKY_WAIT_INCOMING 대기
+_outbound_queue  = TaskQueue()   # 출고 태스크 대기
 
 
 # ════════════════════════════════════════════════════════════
@@ -224,7 +265,10 @@ class TaskManagerNode(Node):
             if task is None:
                 return
             task.record(f"{robot_id} → {event}")
-            _advance(task, robot_id, event)
+            if isinstance(task, OutboundTask):
+                _advance_outbound(task, robot_id, event)
+            else:
+                _advance(task, robot_id, event)
 
 
 # ════════════════════════════════════════════════════════════
@@ -378,6 +422,93 @@ def _try_depart_to_storage(task: Task) -> bool:
     return True
 
 
+# ── 출고 디스패치 ─────────────────────────────────────────────
+def _dispatch_outbound(task: OutboundTask) -> bool:
+    """유휴 핑키 + occupied zone 확인 후 출고 시작."""
+    if task.state not in (OutboundState.PENDING, OutboundState.QUEUED):
+        return False
+    if ZONES.get(task.storage_zone) != "occupied":
+        return False
+    pinky_id = _dispatcher.pick_pinky(ROBOTS, _home_stack)
+    if pinky_id is None:
+        return False
+
+    task.pinky_id = pinky_id
+    task.state    = OutboundState.PINKY_TO_ZONE
+    _set_robot_busy(pinky_id, task.task_id)
+    _home_pop(pinky_id)
+    ROBOTS[pinky_id]["target_zone"] = task.storage_zone
+
+    task.record(f"{pinky_id} → {task.storage_zone} 출고 이동 (도착 후 yaw=0 정렬)")
+    _send_command(pinky_id, "navigate",
+                  {"location": task.storage_zone, "align_yaw": 0.0},
+                  task.task_id)
+    return True
+
+
+# ── 출고 상태 전이 ─────────────────────────────────────────────
+def _advance_outbound(task: OutboundTask, robot_id: str, event: str):
+    s = task.state
+
+    # Step 1: 핑키 zone 도착 (yaw=0 정렬 완료) → jetcobot2 상차 명령
+    if s == OutboundState.PINKY_TO_ZONE and robot_id == task.pinky_id and event == "arrived":
+        ROBOTS[task.pinky_id]["current_zone"] = task.storage_zone
+        ROBOTS[task.pinky_id]["target_zone"]  = None
+        task.state = OutboundState.JETCOBOT2_LOADING
+        _set_robot_busy(task.jetcobot2_id, task.task_id)
+        task.record(f"jetcobot2 → {task.storage_zone} 상차 명령")
+        _send_command(task.jetcobot2_id, "load",
+                      {"zone": task.storage_zone, "target_pinky": task.pinky_id},
+                      task.task_id)
+
+    # Step 2: jetcobot2 상차 완료 → 핑키 outbound_zone으로
+    elif s == OutboundState.JETCOBOT2_LOADING and robot_id == task.jetcobot2_id and event == "done":
+        _set_robot_idle(task.jetcobot2_id)
+        _zone_manager.release(task.storage_zone)
+        ROBOTS[task.pinky_id]["current_zone"] = None
+        ROBOTS[task.pinky_id]["target_zone"]  = "outbound_zone"
+        task.state = OutboundState.PINKY_TO_OUTBOUND
+        task.record(f"{task.pinky_id} → outbound_zone 이동 명령")
+        _send_command(task.pinky_id, "navigate",
+                      {"location": "outbound_zone"}, task.task_id)
+
+    # Step 3: 핑키 outbound_zone 도착 → 홈 복귀
+    elif s == OutboundState.PINKY_TO_OUTBOUND and robot_id == task.pinky_id and event == "arrived":
+        ROBOTS[task.pinky_id]["current_zone"] = None
+        ROBOTS[task.pinky_id]["target_zone"]  = "home"
+        task.state = OutboundState.PINKY_TO_HOME
+        task.record(f"{task.pinky_id} → 홈 복귀 명령")
+        _send_command(task.pinky_id, "navigate",
+                      {"location": "home"}, task.task_id)
+
+    # Step 4: 핑키 홈 도착 → 완료
+    elif s == OutboundState.PINKY_TO_HOME and robot_id == task.pinky_id and event == "arrived":
+        ROBOTS[task.pinky_id]["current_zone"] = "home"
+        ROBOTS[task.pinky_id]["target_zone"]  = None
+        _set_robot_idle(task.pinky_id)
+        _home_push(task.pinky_id)
+        task.state = OutboundState.DONE
+        task.record("출고 태스크 완료")
+        # 대기 중인 입고/출고 태스크 재시도
+        _pinky_queue.drain(_dispatch_pinky_to_load_wait)
+        _dispatch_queue.drain(_try_dispatch)
+        _outbound_queue.drain(_dispatch_outbound)
+
+    elif event == "error":
+        task.state = OutboundState.FAILED
+        task.record(f"출고 실패 — {robot_id} 오류")
+        if task.pinky_id and ROBOTS[task.pinky_id]["task_id"] == task.task_id:
+            ROBOTS[task.pinky_id]["current_zone"] = None
+            ROBOTS[task.pinky_id]["target_zone"]  = None
+            _set_robot_idle(task.pinky_id)
+        if ROBOTS[task.jetcobot2_id]["task_id"] == task.task_id:
+            _set_robot_idle(task.jetcobot2_id)
+        _outbound_queue.drain(_dispatch_outbound)
+
+    else:
+        task.record(f"[무시] {robot_id} / {event} (현재 상태: {s})")
+
+
 # ── 상태 전이 ─────────────────────────────────────────────────
 def _advance(task: Task, robot_id: str, event: str):
     s = task.state
@@ -465,6 +596,9 @@ app = FastAPI(title="Task Manager")
 class TaskRequest(BaseModel):
     storage_zone: str
 
+class OutboundTaskRequest(BaseModel):
+    storage_zone: str
+
 class NavigateRequest(BaseModel):
     robot_id: str
     location: str
@@ -505,6 +639,29 @@ def create_task(req: TaskRequest):
         "routing_mode": ROUTING_MODE,
         "queued":       not dispatched,
     }
+
+
+@app.post("/task/outbound")
+def create_outbound_task(req: OutboundTaskRequest):
+    """출고 태스크 생성. storage_zone은 occupied 상태여야 함."""
+    valid = {f"zone_{i}" for i in range(1, 4)}
+    if req.storage_zone not in valid:
+        raise HTTPException(400,
+            f"출고 가능 구역: {sorted(valid)}")
+    if ZONES.get(req.storage_zone) != "occupied":
+        raise HTTPException(409,
+            f"{req.storage_zone} 에 물품 없음 (현재 상태: {ZONES.get(req.storage_zone)})")
+
+    task_id = str(uuid.uuid4())
+    task    = OutboundTask(task_id, req.storage_zone)
+    with _lock:
+        tasks[task_id] = task
+        if not _dispatch_outbound(task):
+            task.state = OutboundState.QUEUED
+            task.record("유휴 핑키 없음 — 출고 대기열 추가")
+            _outbound_queue.submit(task, _dispatch_outbound)
+
+    return {"task_id": task_id, "state": task.state, "task_type": "outbound"}
 
 
 @app.get("/task/{task_id}")

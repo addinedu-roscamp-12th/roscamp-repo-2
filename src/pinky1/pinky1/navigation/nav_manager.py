@@ -5,15 +5,15 @@ import math
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import NavigateToPose, NavigateThroughPoses
+from nav2_msgs.action import NavigateToPose
 
-from pinky1.config.settings import LOCATIONS, NAV2_CONFIG
+from pinky1.config.settings import LOCATIONS
 from pinky1.utils.logger import RobotLogger
 
 try:
     from pinky_interfaces.action import TransportMission, DockToMarker
     from pinky_interfaces.srv import (
-        Emotion, SetLed, SetBrightness, SetLamp, EmergencyStop)
+        Emotion, SetLed, SetLamp, EmergencyStop)
     _PINKY_AVAILABLE = True
 except ImportError:
     _PINKY_AVAILABLE = False
@@ -57,9 +57,6 @@ class NavManager:
         self.nav_client = ActionClient(
             self.node, NavigateToPose,
             f"{ns}/navigate_to_pose")
-        self.nav_through_client = ActionClient(
-            self.node, NavigateThroughPoses,
-            f"{ns}/navigate_through_poses")
 
         # 로봇 커스텀 액션
         if _PINKY_AVAILABLE:
@@ -85,19 +82,16 @@ class NavManager:
                 Emotion,       f"{ns}/set_emotion")
             self.led_client = self.node.create_client(
                 SetLed,        f"{ns}/set_led")
-            self.brightness_client = self.node.create_client(
-                SetBrightness, f"{ns}/set_brightness")
             self.lamp_client = self.node.create_client(
                 SetLamp,       f"{ns}/set_lamp")
             self.stop_client = self.node.create_client(
                 EmergencyStop, f"{ns}/emergency_stop")
             self.log.info("NAV", "서비스 클라이언트 등록 완료")
         else:
-            self.emotion_client    = None
-            self.led_client        = None
-            self.brightness_client = None
-            self.lamp_client       = None
-            self.stop_client       = None
+            self.emotion_client = None
+            self.led_client     = None
+            self.lamp_client    = None
+            self.stop_client    = None
             self.log.warn("NAV",
                 "pinky_interfaces 없음 — 서비스 비활성화")
 
@@ -123,29 +117,17 @@ class NavManager:
         self._send_action(
             self.nav_client, goal, callback)
 
-    def go_to_location(self, name: str, callback=None):
-        """장소 이름으로 이동"""
+    def go_to_location(self, name: str, callback=None, override_yaw=None):
+        """장소 이름으로 이동. override_yaw 지정 시 해당 yaw로 goal 전송 (Nav2 최종 회전 억제용)."""
         if name not in LOCATIONS:
             self.log.error("NAV", f"모르는 장소: {name}")
             if callback:
                 callback(False)
             return False
         loc = LOCATIONS[name]
-        self.go_to(loc["x"], loc["y"], loc["yaw"], callback)
+        yaw = override_yaw if override_yaw is not None else loc["yaw"]
+        self.go_to(loc["x"], loc["y"], yaw, callback)
         return True
-
-    def go_through(self, waypoints: list, callback=None):
-        """경유지 여러 개 순서대로 이동"""
-        goal       = NavigateThroughPoses.Goal()
-        goal.poses = [
-            self._make_pose(w["x"], w["y"], w.get("yaw", 0.0))
-            for w in waypoints
-        ]
-        self.is_navigating = True
-        self.log.info("NAV",
-            f"경유지 이동 ({len(waypoints)}개)")
-        self._send_action(
-            self.nav_through_client, goal, callback)
 
     # ── 도킹 ───────────────────────────────────────
     def dock_to_marker(self, marker_id: int, callback=None):
@@ -216,14 +198,6 @@ class NavManager:
         req.b = b
         self.led_client.call_async(req)
         self.log.info("LED", f"LED 색상: ({r},{g},{b})")
-
-    def set_brightness(self, level: int):
-        """LED 밝기 조절 (0~100)"""
-        if not self.brightness_client:
-            return
-        req            = SetBrightness.Request()
-        req.brightness = level
-        self.brightness_client.call_async(req)
 
     def set_lamp(self, mode: str, color: str = "white"):
         """상단 램프 제어"""

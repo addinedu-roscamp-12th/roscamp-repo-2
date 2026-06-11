@@ -11,11 +11,12 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 
 
 COUNT = int(sys.argv[1]) if len(sys.argv) > 1 else 5
+NS    = "pinky1"
 
 
-NS = "pinky1"
-
-
+# ════════════════════════════════════════════════════════════
+# NODE
+# ════════════════════════════════════════════════════════════
 class PoseReader(Node):
     def __init__(self):
         super().__init__("pose_reader", namespace=NS)
@@ -60,6 +61,9 @@ class PoseReader(Node):
         print(f'  "location_name": {{"x": {x}, "y": {y}, "yaw": {yaw}}},')
 
 
+# ════════════════════════════════════════════════════════════
+# ENTRY POINT
+# ════════════════════════════════════════════════════════════
 def main():
     rclpy.init()
     node = PoseReader()

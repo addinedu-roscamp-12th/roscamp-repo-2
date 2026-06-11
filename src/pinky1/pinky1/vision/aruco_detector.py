@@ -29,7 +29,6 @@ class ArucoDetector:
         self.aruco_params.errorCorrectionRate    = 0.5
 
         self.marker_size = ARUCO_CONFIG["marker_size"]
-        self.approach    = ARUCO_CONFIG["approach_distance"]
         self.marker_map  = ARUCO_CONFIG["marker_map"]
 
         # 감지 콜백 (외부 등록)
@@ -95,9 +94,9 @@ class ArucoDetector:
                 res["tvec"]     = tvec[0][0].tolist()
                 res["rvec"]     = rvec[0][0].tolist()
 
-            # 5) 등록되지 않은 마커 필터링
+            # 5) 등록되지 않은 마커 필터링 — marker_map에 없으면 무시
             if res["location"] == "unknown":
-                continue  # 등록되지 않은 마커 무시
+                continue
             results.append(res)
             if int(mid) in new_ids:
                 dist_str = f"{res['distance']:.2f}m" if res["distance"] else ""
@@ -110,9 +109,3 @@ class ArucoDetector:
 
         return results
 
-    # ── 헬퍼 ───────────────────────────────────────────────────
-    def get_approach_tvec(self, tvec: list) -> list:
-        """마커 앞 정차 위치 계산 (approach_distance 만큼 앞)"""
-        t    = tvec.copy()
-        t[2] = max(0, t[2] - self.approach)
-        return t
