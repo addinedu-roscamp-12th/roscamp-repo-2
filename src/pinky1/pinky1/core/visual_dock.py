@@ -11,7 +11,9 @@ from pinky1.utils.logger import RobotLogger
 from tf2_ros import Buffer, TransformListener
 
 
-# ── 튜닝 파라미터 ──────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════
+# TUNING PARAMETERS
+# ════════════════════════════════════════════════════════════
 IMAGE_WIDTH      = 640   # 카메라 해상도 가로
 CENTER_TOLERANCE = 20    # px — 좌우 허용 오차
 PERP_TOLERANCE   = 8     # px — 정면 각도 허용 오차

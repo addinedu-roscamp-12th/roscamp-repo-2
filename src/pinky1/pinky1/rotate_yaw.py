@@ -19,6 +19,9 @@ from rclpy.node import Node
 from tf2_ros import Buffer, TransformListener
 
 
+# ════════════════════════════════════════════════════════════
+# HELPERS
+# ════════════════════════════════════════════════════════════
 def _yaw_from_quat(q) -> float:
     siny = 2.0 * (q.w * q.z + q.x * q.y)
     cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
@@ -45,6 +48,9 @@ def _get_map_yaw(tf_buffer: Buffer, ns: str) -> float | None:
         return None
 
 
+# ════════════════════════════════════════════════════════════
+# NODE
+# ════════════════════════════════════════════════════════════
 class RotateNode(Node):
     def __init__(self, ns: str, angle_deg: float = None, target_deg: float = None):
         super().__init__("rotate_yaw_util", namespace=ns)
@@ -127,6 +133,9 @@ class RotateNode(Node):
         self._done = True
 
 
+# ════════════════════════════════════════════════════════════
+# ENTRY POINT
+# ════════════════════════════════════════════════════════════
 def main():
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)

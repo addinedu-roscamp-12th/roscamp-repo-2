@@ -36,12 +36,12 @@ class LineTracer:
                  stop_distance:  float = 0.055,
                  rotate_speed:   float = 0.5):
 
-        self.node          = node
-        self.sensors       = sensors
-        self.nav           = nav
-        self.log           = RobotLogger(node)
+        self.node    = node
+        self.sensors = sensors
+        self.nav     = nav
+        self.log     = RobotLogger(node)
 
-        # 튜닝 파라미터
+        # ── 튜닝 파라미터 ──────────────────────────
         self.line_threshold = line_threshold
         self.linear_speed   = linear_speed
         self.angular_gain   = angular_gain
@@ -49,18 +49,16 @@ class LineTracer:
         self.stop_distance  = stop_distance
         self.rotate_speed   = rotate_speed
 
-        # 상태 변수
-        self._state          = _State.IDLE
-        self._timer          = None
-        self._stop_count     = 0   # 연속 초음파 감지 카운트
-        self._stop_confirm   = 10  # 10회 연속 (0.5초) 감지 시 주차
+        # ── 상태 변수 ──────────────────────────────
+        self._state      = _State.IDLE
+        self._timer      = None
+        self._prev_error = 0.0  # 직전 오차 (D항 계산용)
 
-        # 회전 타이밍
-        self._rotate_start   = None
+        # ── 회전 타이밍 ────────────────────────────
+        self._rotate_start    = None
         self._rotate_duration = math.pi / rotate_speed  # 180도 회전 시간(초)
-        self._prev_error     = 0.0  # 직전 오차 (D항 계산용)
 
-        # 퍼블리셔 · 콜백
+        # ── 퍼블리셔 · 콜백 ────────────────────────
         ns = getattr(node, 'ns', 'pinky1')
         self._cmd_pub = node.create_publisher(Twist, f"/{ns}/cmd_vel", 10)
 
@@ -73,7 +71,6 @@ class LineTracer:
             return
         self._cancel_timer()
         self._state        = _State.LINE_FOLLOWING
-        self._stop_count   = 0
         self._rotate_start = None
         self._prev_error   = 0.0  # D항 누적 방지를 위해 리셋
         self.nav.cancel_navigation()
