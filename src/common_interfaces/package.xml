@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>pinky_msgs</name>
+  <name>common_interfaces</name>
   <version>0.0.1</version>
   <description>Pinky warehouse robot action messages</description>
   <maintainer email="user@example.com">user</maintainer>
