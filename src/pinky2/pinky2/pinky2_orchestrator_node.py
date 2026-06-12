@@ -8,7 +8,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import Bool
 
-from common_interfaces.action import RobotCommand
+from ppibigi_interfaces.action import RobotCommand
 
 ACTION_NAME = '/command'   # task_manager와 합의 후 변경 가능
 EXPECTED_ACTION_TYPE = 'navigate'  # task_manager와 합의 후 변경 가능
