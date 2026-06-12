@@ -83,6 +83,7 @@ class RobotController(Node):
         self._forward_end_time     = 0.0    # 전진 종료 시각 (sec, 폴백용)
         self._forward_target_dist  = 0.0    # 목표 이동 거리 (m)
         self._forward_start_pos    = None   # 출발 AMCL 위치
+        self._forward_speed        = 0.05   # 전진 속도 (m/s)
         self._us_forward_timer     = None   # 초음파 전진 타이머
         self._us_forward_done_cb   = None   # 초음파 정지 후 콜백
         self._yaw_rotate_target    = None
@@ -329,9 +330,10 @@ class RobotController(Node):
         except Exception:
             return 0.20
 
-    def _start_forward(self, distance: float, speed: float = 0.1):
+    def _start_forward(self, distance: float, speed: float = 0.05):
         """cmd_vel로 지정 거리만큼 전진. AMCL 기준 이동 거리 측정, 폴백은 타이머."""
         self._forward_target_dist = distance
+        self._forward_speed       = speed
         self._forward_start_pos   = self._amcl_xy()
         # 폴백: AMCL 없을 때 시간 기반. 여유 2배 확보
         duration = distance / speed
@@ -371,7 +373,7 @@ class RobotController(Node):
                 self._do_navigate(location)
             return
         msg = Twist()
-        msg.linear.x = 0.1
+        msg.linear.x = self._forward_speed
         self._cmd_pub.publish(msg)
 
     def _start_us_forward(self, done_cb=None):
@@ -537,7 +539,7 @@ class RobotController(Node):
                 self.log.info("SYS",
                     f"{location} 이동 → {prev_location} 출발점까지 {dist:.3f}m 전진 후 Nav2 시작")
                 self._pending_navigate = location
-                self._start_forward(distance=dist, speed=0.1)
+                self._start_forward(distance=dist, speed=0.05)
                 return
 
             self._do_navigate(location)

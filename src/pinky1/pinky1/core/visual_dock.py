@@ -17,7 +17,7 @@ from tf2_ros import Buffer, TransformListener
 IMAGE_WIDTH      = 640   # 카메라 해상도 가로
 CENTER_TOLERANCE = 20    # px — 좌우 허용 오차
 PERP_TOLERANCE   = 8     # px — 정면 각도 허용 오차
-MIN_DOCK_SIZE    = 80    # px — 시각 서보 시작 최소 마커 크기
+MIN_DOCK_SIZE    = 0     # px — 크기 제한 없음 (감지 즉시 시작)
 ANG_SPEED        = 0.3   # rad/s — 정렬 회전 속도
 LIN_SPEED        = 0.05  # m/s  — 전진 속도
 US_STOP_DIST     = 0.065 # m    — 초음파 정지 거리 (6.5cm)

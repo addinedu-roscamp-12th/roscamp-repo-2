@@ -51,14 +51,29 @@ def _build_system_prompt(mode: str) -> str:
 
 {inbound_block}
 
+[출고 작업] 렉에서 물건 꺼내기:
+{{"action": "outbound_task", "parameters": {{"storage_zone": "zone_<N>"}}}}
+
+출고 변환 규칙:
+  "N번 렉 꺼내줘" / "N번 랙 출고" / "N번 출고해줘" → outbound_task, storage_zone: "zone_N"
+  예) "1번 렉 꺼내줘" → {{"action": "outbound_task", "parameters": {{"storage_zone": "zone_1"}}}}
+  렉 번호 범위: 1 ~ 3
+
 [단순 이동] 로봇 직접 이동 명령:
 {{"action": "navigate", "parameters": {{"location": "<장소키>"}}}}
 
 [정지]: {{"action": "navigate", "parameters": {{"location": "stop"}}}}
 [이해불가]: {{"action": "unknown", "parameters": {{"reason": "<이유>"}}}}
 
-장소 키: home, loading_zone, unloading_zone, charging, warehouse,
-         marker_0~marker_4, stop
+장소 키: home, load_wait_1, load_wait_2, outbound_zone,
+         zone_1, zone_2, zone_3, stop
+
+장소 키 변환 규칙:
+  "홈" / "집" / "원위치"          → home
+  "상차 대기" / "대기 구역 1"     → load_wait_1
+  "상차 대기 2" / "대기 구역 2"   → load_wait_2
+  "출고 구역" / "출고 대기"        → outbound_zone
+  "N번 존" / "존 N" / "zone N"   → zone_N  (N: 1~3)
 
 "멈춰" / "정지" → navigate, location은 stop
 
@@ -112,6 +127,32 @@ class CommandReq(BaseModel):
     robot: str = "pinky1"  # "pinky1" | "pinky2"
 
 
+def forward_outbound_to_task_manager(cmd: dict) -> str:
+    zone = cmd.get("parameters", {}).get("storage_zone")
+    if not zone:
+        return "storage_zone 누락"
+    try:
+        resp = requests.post(
+            f"{TASK_MANAGER_URL}/task/outbound",
+            json={"storage_zone": zone},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return f"출고 태스크 생성 완료 — task_id: {data.get('task_id')} / 상태: {data.get('state')}"
+    except requests.exceptions.ConnectionError:
+        return f"태스크매니저 연결 실패 ({TASK_MANAGER_URL})"
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code
+        if status == 409:
+            return f"{zone} 출고 불가 — 물건이 없거나 이미 출고 중"
+        if status == 503:
+            return "로봇 사용 중 — 잠시 후 다시 시도해주세요"
+        return f"태스크매니저 오류 ({status}): {e.response.text}"
+    except Exception as e:
+        return f"태스크매니저 오류: {e}"
+
+
 def forward_to_task_manager(cmd: dict) -> str:
     zone = cmd.get("parameters", {}).get("storage_zone")
     if not zone:
@@ -151,6 +192,8 @@ async def command(req: CommandReq):
 
         if cmd.get("action") == "inbound_task":
             result = forward_to_task_manager(cmd)
+        elif cmd.get("action") == "outbound_task":
+            result = forward_outbound_to_task_manager(cmd)
         else:
             result = forward_navigate_to_task_manager(req.robot, cmd)
 
