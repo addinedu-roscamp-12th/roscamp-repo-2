@@ -6,7 +6,6 @@ yaw 기반 제자리 회전 유틸리티 (map 프레임 기준)
   ros2 run pinky1 rotate_yaw -- --angle 180           # 상대: 왼쪽 180도
   ros2 run pinky1 rotate_yaw -- --target 0            # 절대: map 기준 yaw 0도로 정렬
   ros2 run pinky1 rotate_yaw -- --target 90           # 절대: map 기준 yaw 90도로 정렬
-  ros2 run pinky1 rotate_yaw -- --target 0 --ns pinky2
 """
 import argparse
 import math

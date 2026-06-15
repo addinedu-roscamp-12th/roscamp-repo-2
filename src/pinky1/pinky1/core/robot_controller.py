@@ -18,7 +18,7 @@ try:
 except ImportError:
     _PINKY_MSGS_AVAILABLE = False
 
-from pinky1.config.settings import ROBOT_CONFIG, ARUCO_CONFIG, ZONE_DEPART_POINTS, ARRIVAL_US_STOP
+from pinky1.config.settings import ROBOT_CONFIG, ARUCO_CONFIG, ZONE_DEPART_POINTS, ARRIVAL_US_STOP, ARRIVAL_US_FORWARD
 from pinky1.navigation.nav_manager import NavManager
 from pinky1.navigation.line_tracer import LineTracer
 from pinky1.sensors.sensor_manager import SensorManager
@@ -165,8 +165,12 @@ class RobotController(Node):
         for m in markers:
             if self._target_marker_id is not None and m["id"] == self._target_marker_id:
                 if self.visual_dock.active:
+                    # visual_dock 진행 중이면 항상 update (Nav2 도착 후 도킹 포함)
                     self.visual_dock.update(m)
                 elif not self._docking:
+                    # ARRIVAL_US_FORWARD 목적지는 Nav2 도착 후 visual_dock 시작 — 이동 중 취소 안 함
+                    if self._target_location in ARRIVAL_US_FORWARD:
+                        return
                     # 멀리 있으면 Nav2 장애물 회피에 맡기고, 충분히 가까워졌을 때만 시각 서보 시작
                     if m["pixel_size"] < MIN_DOCK_SIZE:
                         return
@@ -240,11 +244,15 @@ class RobotController(Node):
             self._nav_event.set()
             self._nav_event = None
 
-    def _on_dock_done(self, result=None):
+    def _on_dock_done(self, success=True):
         self._docking          = False
         self._target_marker_id = None
-        self.log.info("SYS", "정밀 정차 완료")
-        self._send_callback("arrived")
+        if success:
+            self.log.info("SYS", "정밀 정차 완료")
+            self._send_callback("arrived")
+        else:
+            self.log.warn("SYS", "정밀 정차 실패 (마커 미감지 타임아웃)")
+            self._send_callback("error")
 
     def _on_nav_done(self, success=True):
         if not success:
@@ -270,13 +278,21 @@ class RobotController(Node):
                 done_cb=lambda: self._send_callback("arrived"))
             return
 
-        # 도착 후 초음파 감지까지 전진 후 yaw 정렬
+        # 도착 후 초음파 감지까지 전진 후 yaw 정렬 (outbound_zone: 180도)
         if self._target_location in ARRIVAL_US_STOP:
             self.log.info("SYS",
                 f"{self._target_location} 도착 → 초음파 6.5cm 감지까지 전진")
             self._start_us_forward(
                 done_cb=lambda: self._start_rotate_to_yaw(
                     math.pi, done_cb=lambda: self._send_callback("arrived")))
+            return
+
+        # 도착 후 마커 각도 보정 전진 → 초음파 정지 → yaw 정렬 (load_wait_1 등)
+        if self._target_location in ARRIVAL_US_FORWARD:
+            self.log.info("SYS",
+                f"{self._target_location} 도착 → 마커 visual_dock 시작")
+            self._docking = True
+            self.visual_dock.start(done_callback=self._on_dock_done)
             return
 
         if self._target_marker_id is None or self._docking:
@@ -487,6 +503,27 @@ class RobotController(Node):
     def _stop_search(self):
         self._cmd_pub.publish(Twist())
 
+    def _cancel_all_motion(self):
+        """진행 중인 모든 cmd_vel 발행 타이머/모듈을 강제 정지.
+        새 navigate/stop 명령 진입 시 좀비 타이머가 cmd_vel을 덮어쓰지 않도록 한다."""
+        for attr in ("_rotate_timer", "_forward_timer",
+                     "_us_forward_timer", "_yaw_rotate_timer"):
+            t = getattr(self, attr, None)
+            if t is not None:
+                t.cancel()
+                setattr(self, attr, None)
+        self._forward_start_pos  = None
+        self._pending_navigate   = None
+        self._us_forward_done_cb = None
+        self._yaw_rotate_done_cb = None
+        self._yaw_rotate_target  = None
+        if self.line_tracer.is_active:
+            self.line_tracer.stop()
+        if self.visual_dock.active:
+            self.visual_dock.stop()
+        self._docking = False
+        self._cmd_pub.publish(Twist())
+
     # ════════════════════════════════════════════════════════════
     # COMMAND ROUTER
     # ════════════════════════════════════════════════════════════
@@ -498,7 +535,7 @@ class RobotController(Node):
 
         # ── 이동 / 도킹 / 운반 ──────────────────────
         if action == "navigate":
-            self._stop_search()
+            self._cancel_all_motion()
             self._target_marker_id     = None
             self._task_id              = cmd.get("task_id", "")
             self._line_trace_on_arrive = (params.get("location") == "home")
@@ -555,7 +592,7 @@ class RobotController(Node):
 
         # ── 정지 / 재개 ────────────────────────────
         elif action == "stop":
-            self._stop_search()
+            self._cancel_all_motion()
             self._target_marker_id = None
             self.nav.cancel_navigation()
             self.nav.emergency_stop(activate=True)

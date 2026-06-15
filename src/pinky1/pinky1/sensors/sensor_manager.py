@@ -86,7 +86,7 @@ class SensorManager:
             self._cb_us,     10)
         sub(UInt16MultiArray, f"{ns}/ir_sensor/range",
             self._cb_ir,     10)
-        sub(PoseWithCovarianceStamped, "/pinky1/amcl_pose",
+        sub(PoseWithCovarianceStamped, f"{ns}/amcl_pose",
             self._cb_amcl,   10)
 
         # 로봇 상태 (pinky_interfaces)

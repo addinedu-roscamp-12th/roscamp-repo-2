@@ -24,7 +24,11 @@ class ArucoDetector:
 
         self.aruco_dict   = cv2.aruco.getPredefinedDictionary(
             getattr(cv2.aruco, ARUCO_CONFIG["dict"]))
-        self.aruco_params = cv2.aruco.DetectorParameters_create()
+        # OpenCV 4.7+ 는 DetectorParameters(), 4.6 이하는 DetectorParameters_create()
+        if hasattr(cv2.aruco, "DetectorParameters"):
+            self.aruco_params = cv2.aruco.DetectorParameters()
+        else:
+            self.aruco_params = cv2.aruco.DetectorParameters_create()
         self.aruco_params.minMarkerPerimeterRate = 0.05
         self.aruco_params.errorCorrectionRate    = 0.5
 
