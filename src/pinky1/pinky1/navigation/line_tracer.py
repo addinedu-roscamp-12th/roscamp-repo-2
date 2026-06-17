@@ -38,7 +38,8 @@ class LineTracer:
                  angular_d_gain: float = 0.0,
                  stop_distance:  float = 0.065,
                  rotate_speed:   float = 0.5,
-                 park_yaw:       float = math.pi):
+                 park_yaw:       float = math.pi,
+                 tf_buf=None):
 
         self.node    = node
         self.sensors = sensors
@@ -65,8 +66,11 @@ class LineTracer:
         self._cmd_pub = node.create_publisher(Twist, f"/{ns}/cmd_vel", 10)
 
         # ── 맵 기준 yaw용 TF ───────────────────────
-        self._tf_buf      = Buffer()
-        self._tf_listener = TransformListener(self._tf_buf, node)
+        if tf_buf is not None:
+            self._tf_buf = tf_buf
+        else:
+            self._tf_buf      = Buffer()
+            self._tf_listener = TransformListener(self._tf_buf, node)
         self._odom_yaw    = None
         node.create_subscription(Odometry, f"/{ns}/odom", self._cb_odom, 10)
 

@@ -48,7 +48,7 @@ class VisualDock:
     4단계 (yaw):     map 기준 yaw=0 방향으로 왼쪽 회전 후 완료
     """
 
-    def __init__(self, node, sensors=None):
+    def __init__(self, node, sensors=None, tf_buf=None):
         ns = getattr(node, 'ns', 'pinky1')
         self._node    = node
         self._sensors = sensors
@@ -63,8 +63,11 @@ class VisualDock:
         self._us_timer   = None   # 전진 중 독립 US 모니터링 타이머
 
         # map 기준 yaw 읽기용 TF
-        self._tf_buf      = Buffer()
-        self._tf_listener = TransformListener(self._tf_buf, node)
+        if tf_buf is not None:
+            self._tf_buf = tf_buf
+        else:
+            self._tf_buf      = Buffer()
+            self._tf_listener = TransformListener(self._tf_buf, node)
         self._odom_yaw    = None
         node.create_subscription(
             Odometry, f"/{ns}/odom", self._cb_odom, 10)

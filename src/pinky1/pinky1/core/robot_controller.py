@@ -18,7 +18,7 @@ try:
 except ImportError:
     _PINKY_MSGS_AVAILABLE = False
 
-from pinky1.config.settings import ROBOT_CONFIG, ARUCO_CONFIG, ZONE_DEPART_POINTS, ARRIVAL_US_STOP, ARRIVAL_US_FORWARD
+from pinky1.config.settings import ROBOT_CONFIG, ARUCO_CONFIG, ZONE_DEPART_POINTS, ARRIVAL_US_STOP, ARRIVAL_US_FORWARD, ARRIVAL_YAW_ROTATE
 from pinky1.navigation.nav_manager import NavManager
 from pinky1.navigation.line_tracer import LineTracer
 from pinky1.sensors.sensor_manager import SensorManager
@@ -52,15 +52,20 @@ class RobotController(Node):
 
         self.log.info("SYS", f"=== {cfg['name']} 시작 ===")
 
+        # ── TF Buffer (노드 전체 공유 — 중복 생성 방지) ────────
+        self._tf_buf      = Buffer()
+        self._tf_listener = TransformListener(self._tf_buf, self)
+
         # ── 모듈 초기화 ────────────────────────────
         self.sensors       = SensorManager(self, self.ns)
         self.nav           = NavManager(self, self.ns)
         self.line_tracer   = LineTracer(self, self.sensors, self.nav,
                                        angular_gain=0.15, angular_d_gain=0.20,
-                                       stop_distance=0.065)
+                                       stop_distance=0.065,
+                                       tf_buf=self._tf_buf)
         self.aruco         = ArucoDetector(self)
         self.yolo          = YoloDetector(self)
-        self.visual_dock   = VisualDock(self, self.sensors)
+        self.visual_dock   = VisualDock(self, self.sensors, tf_buf=self._tf_buf)
 
         # ── 도킹/마커 상태 ─────────────────────────
         self._docking          = False
@@ -90,9 +95,7 @@ class RobotController(Node):
         self._yaw_rotate_timer     = None
         self._yaw_rotate_done_cb   = None
 
-        # ── TF / 퍼블리셔 ──────────────────────────
-        self._tf_buf      = Buffer()
-        self._tf_listener = TransformListener(self._tf_buf, self)
+        # ── 퍼블리셔 ───────────────────────────────
         self._cmd_pub     = self.create_publisher(Twist, f"/{self.ns}/cmd_vel", 10)
 
         # ── 콜백 연결 ──────────────────────────────
@@ -278,7 +281,16 @@ class RobotController(Node):
                 done_cb=lambda: self._send_callback("arrived"))
             return
 
-        # 도착 후 초음파 감지까지 전진 후 yaw 정렬 (outbound_zone: 180도)
+        # 도착 후 cmd_vel로 yaw 정렬
+        if self._target_location in ARRIVAL_YAW_ROTATE:
+            target_yaw = ARRIVAL_YAW_ROTATE[self._target_location]
+            self.log.info("SYS",
+                f"{self._target_location} 도착 → cmd_vel yaw {math.degrees(target_yaw):.1f}° 정렬")
+            self._start_rotate_to_yaw(target_yaw,
+                done_cb=lambda: self._send_callback("arrived"))
+            return
+
+        # 도착 후 초음파 감지까지 전진 후 yaw 정렬
         if self._target_location in ARRIVAL_US_STOP:
             self.log.info("SYS",
                 f"{self._target_location} 도착 → 초음파 6.5cm 감지까지 전진")
@@ -492,9 +504,10 @@ class RobotController(Node):
 
     # ── Nav2 호출 ──────────────────────────────────
     def _do_navigate(self, location: str):
-        if self._align_yaw is not None:
-            # align_yaw 있으면 현재 yaw로 Nav2 goal 설정 → Nav2가 최종 회전 시도 안 함
-            current_yaw = self._current_map_yaw()
+        if self._align_yaw is not None or location in ARRIVAL_YAW_ROTATE:
+            # cmd_vel로 yaw 정렬할 위치 또는 align_yaw 있으면
+            # 현재 yaw로 Nav2 goal 설정 → Nav2가 최종 회전 시도 안 함
+            current_yaw = self._current_map_yaw() or 0.0
             self.nav.go_to_location(location, callback=self._on_nav_done,
                                     override_yaw=current_yaw)
         else:
