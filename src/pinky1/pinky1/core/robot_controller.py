@@ -18,7 +18,7 @@ try:
 except ImportError:
     _PINKY_MSGS_AVAILABLE = False
 
-from pinky1.config.settings import ROBOT_CONFIG, ARUCO_CONFIG, ZONE_DEPART_POINTS, ARRIVAL_US_STOP, ARRIVAL_US_FORWARD, ARRIVAL_YAW_ROTATE
+from pinky1.config.settings import ROBOT_CONFIG, ARUCO_CONFIG, LOCATIONS, ZONE_DEPART_POINTS, ARRIVAL_US_STOP, ARRIVAL_US_FORWARD, ARRIVAL_YAW_ROTATE
 from pinky1.navigation.nav_manager import NavManager
 from pinky1.navigation.line_tracer import LineTracer
 from pinky1.sensors.sensor_manager import SensorManager
@@ -304,7 +304,9 @@ class RobotController(Node):
             self.log.info("SYS",
                 f"{self._target_location} 도착 → 마커 visual_dock 시작")
             self._docking = True
-            self.visual_dock.start(done_callback=self._on_dock_done)
+            target_yaw = LOCATIONS.get("zone_1", {}).get("yaw", 0.0)
+            self.visual_dock.start(done_callback=self._on_dock_done,
+                                   target_yaw=target_yaw)
             return
 
         if self._target_marker_id is None or self._docking:

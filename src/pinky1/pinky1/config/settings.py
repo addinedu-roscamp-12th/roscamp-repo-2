@@ -33,7 +33,7 @@ LOCATIONS = {
     "load_wait_2":  {"x": 0.0,    "y": 0.0,    "yaw": 0.0},
 
     # ── 기존 존 방식 구역 (zone 모드 전용) ───────────
-    "outbound_zone": {"x": 0.0762, "y": -0.7483, "yaw": 3.10},
+    "outbound_zone": {"x": 0.0503, "y": -0.7542, "yaw": 0.0},
     "zone_1":       {"x": -0.4976, "y": -0.0311, "yaw": 0.0},
     "zone_2":       {"x": -0.5217, "y": -0.4008, "yaw": 0.0},
     "zone_3":       {"x": -0.5128, "y": -0.7697, "yaw": 0.0},
@@ -69,7 +69,7 @@ ARRIVAL_US_STOP = set()
 # ── 도착 후 cmd_vel로 yaw 정렬할 위치 ────────────────────
 # {location: target_yaw_rad} — Nav2 도착 후 cmd_vel로 해당 yaw로 회전
 ARRIVAL_YAW_ROTATE = {
-    "outbound_zone": 3.10,
+    "outbound_zone": 3.14,
     "zone_1":        0.02,
     "zone_2":        0.02,
     "zone_3":        0.02,

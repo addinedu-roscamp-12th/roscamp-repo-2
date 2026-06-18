@@ -78,9 +78,10 @@ class VisualDock:
     MARKER_WAIT_TIMEOUT = 10.0  # 마커 미감지 시 타임아웃 (초)
 
     # ── 외부 인터페이스 ────────────────────────────────────────
-    def start(self, done_callback=None):
+    def start(self, done_callback=None, target_yaw=None):
         self.active      = True
         self._done_cb    = done_callback
+        self._yaw_target = target_yaw if target_yaw is not None else YAW_TARGET
         self._state      = None
         self._start_time = time.time()
         self._wait_timer = self._node.create_timer(1.0, self._wait_timeout_tick)
@@ -165,12 +166,12 @@ class VisualDock:
             self.log.warn("DOCK", "yaw 값 없음 (TF/odom 미수신) — 대기 중")
             return
 
-        remaining = _angle_diff(YAW_TARGET, yaw)
+        remaining = _angle_diff(self._yaw_target, yaw)
         now = time.time()
         if now - self._last_log >= 0.5:
             self._last_log = now
             self.log.info("DOCK",
-                f"yaw 정렬 | 현재={math.degrees(yaw):+.1f}° 목표={math.degrees(YAW_TARGET):+.1f}° 남은={math.degrees(remaining):+.1f}°")
+                f"yaw 정렬 | 현재={math.degrees(yaw):+.1f}° 목표={math.degrees(self._yaw_target):+.1f}° 남은={math.degrees(remaining):+.1f}°")
 
         if abs(remaining) <= YAW_TOLERANCE:
             self._send(0.0, 0.0)
