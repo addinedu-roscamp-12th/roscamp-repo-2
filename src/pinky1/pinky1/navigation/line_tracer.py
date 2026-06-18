@@ -3,8 +3,11 @@
 
 import math
 import enum
+import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from tf2_ros import Buffer, TransformListener
 
 from pinky1.utils.logger import RobotLogger
 
@@ -19,7 +22,7 @@ class _State(enum.Enum):
 class LineTracer:
     """
     IR 센서 3개로 흰 라인을 감지하고 추종.
-    초음파 센서로 장애물 감지 시 정지 → 180도 회전 → 주차 완료.
+    초음파 센서로 장애물 감지 시 정지 → yaw 목표값까지 회전 → 주차 완료.
 
     SensorManager.ir_range  — UInt16MultiArray [left, center, right]
     SensorManager.us_range  — Range (초음파 거리)
@@ -33,8 +36,10 @@ class LineTracer:
                  linear_speed:   float = 0.06,
                  angular_gain:   float = 0.8,
                  angular_d_gain: float = 0.0,
-                 stop_distance:  float = 0.055,
-                 rotate_speed:   float = 0.5):
+                 stop_distance:  float = 0.065,
+                 rotate_speed:   float = 0.5,
+                 park_yaw:       float = math.pi,
+                 tf_buf=None):
 
         self.node    = node
         self.sensors = sensors
@@ -48,19 +53,26 @@ class LineTracer:
         self.angular_d_gain = angular_d_gain
         self.stop_distance  = stop_distance
         self.rotate_speed   = rotate_speed
+        self.park_yaw       = park_yaw
 
         # ── 상태 변수 ──────────────────────────────
         self._state      = _State.IDLE
         self._timer      = None
         self._prev_error = 0.0  # 직전 오차 (D항 계산용)
 
-        # ── 회전 타이밍 ────────────────────────────
-        self._rotate_start    = None
-        self._rotate_duration = math.pi / rotate_speed  # 180도 회전 시간(초)
-
         # ── 퍼블리셔 · 콜백 ────────────────────────
         ns = getattr(node, 'ns', 'pinky1')
+        self._ns      = ns
         self._cmd_pub = node.create_publisher(Twist, f"/{ns}/cmd_vel", 10)
+
+        # ── 맵 기준 yaw용 TF ───────────────────────
+        if tf_buf is not None:
+            self._tf_buf = tf_buf
+        else:
+            self._tf_buf      = Buffer()
+            self._tf_listener = TransformListener(self._tf_buf, node)
+        self._odom_yaw    = None
+        node.create_subscription(Odometry, f"/{ns}/odom", self._cb_odom, 10)
 
         self.on_parked: callable = None  # 주차 완료 콜백
 
@@ -103,7 +115,7 @@ class LineTracer:
 
         # 초음파 정지 조건 (연속 감지 debounce)
         us = self.sensors.us_distance
-        if us is not None and us <= self.stop_distance:
+        if us is not None and 0 < us <= self.stop_distance:
             self._publish_stop()
             self._state        = _State.ROTATING
             self._rotate_start = self.node.get_clock().now()
@@ -118,19 +130,47 @@ class LineTracer:
         self._follow(ir.data[0], ir.data[1], ir.data[2])
 
     def _do_rotate(self):
-        """180도 회전 처리"""
-        elapsed = (self.node.get_clock().now() - self._rotate_start).nanoseconds / 1e9
-        if elapsed >= self._rotate_duration:
+        """목표 yaw까지 회전 처리 (odom 기반)"""
+        yaw = self._current_yaw()
+        if yaw is None:
+            return
+
+        diff = self.park_yaw - yaw
+        while diff > math.pi:
+            diff -= 2 * math.pi
+        while diff < -math.pi:
+            diff += 2 * math.pi
+
+        if abs(diff) <= math.radians(2.0):
             self._publish_stop()
             self._cancel_timer()
             self._state = _State.PARKED
-            self.log.info("LINE", "180도 회전 완료 → 주차 완료")
+            self.log.info("LINE", f"yaw 정렬 완료 ({math.degrees(yaw):.1f}°) → 주차 완료")
             if self.on_parked:
                 self.on_parked()
         else:
+            speed = max(0.15, min(self.rotate_speed, abs(diff) * 0.5))
             twist = Twist()
-            twist.angular.z = self.rotate_speed
+            twist.angular.z = math.copysign(speed, diff)
             self._cmd_pub.publish(twist)
+
+    def _cb_odom(self, msg: Odometry):
+        q = msg.pose.pose.orientation
+        siny = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        self._odom_yaw = math.atan2(siny, cosy)
+
+    def _current_yaw(self) -> float | None:
+        try:
+            t = self._tf_buf.lookup_transform(
+                "map", f"{self._ns}/base_footprint",
+                rclpy.time.Time())
+            q = t.transform.rotation
+            siny = 2.0 * (q.w * q.z + q.x * q.y)
+            cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+            return math.atan2(siny, cosy)
+        except Exception:
+            return self._odom_yaw
 
     def _follow(self, left: int, center: int, right: int):
         thr = self.line_threshold

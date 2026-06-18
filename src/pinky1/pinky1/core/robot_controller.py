@@ -18,7 +18,7 @@ try:
 except ImportError:
     _PINKY_MSGS_AVAILABLE = False
 
-from pinky1.config.settings import ROBOT_CONFIG, ARUCO_CONFIG, ZONE_DEPART_POINTS, ARRIVAL_US_STOP
+from pinky1.config.settings import ROBOT_CONFIG, ARUCO_CONFIG, LOCATIONS, ZONE_DEPART_POINTS, ARRIVAL_US_STOP, ARRIVAL_US_FORWARD, ARRIVAL_YAW_ROTATE
 from pinky1.navigation.nav_manager import NavManager
 from pinky1.navigation.line_tracer import LineTracer
 from pinky1.sensors.sensor_manager import SensorManager
@@ -52,15 +52,20 @@ class RobotController(Node):
 
         self.log.info("SYS", f"=== {cfg['name']} 시작 ===")
 
+        # ── TF Buffer (노드 전체 공유 — 중복 생성 방지) ────────
+        self._tf_buf      = Buffer()
+        self._tf_listener = TransformListener(self._tf_buf, self)
+
         # ── 모듈 초기화 ────────────────────────────
         self.sensors       = SensorManager(self, self.ns)
         self.nav           = NavManager(self, self.ns)
         self.line_tracer   = LineTracer(self, self.sensors, self.nav,
                                        angular_gain=0.15, angular_d_gain=0.20,
-                                       stop_distance=0.065)
+                                       stop_distance=0.065,
+                                       tf_buf=self._tf_buf)
         self.aruco         = ArucoDetector(self)
         self.yolo          = YoloDetector(self)
-        self.visual_dock   = VisualDock(self, self.sensors)
+        self.visual_dock   = VisualDock(self, self.sensors, tf_buf=self._tf_buf)
 
         # ── 도킹/마커 상태 ─────────────────────────
         self._docking          = False
@@ -83,15 +88,14 @@ class RobotController(Node):
         self._forward_end_time     = 0.0    # 전진 종료 시각 (sec, 폴백용)
         self._forward_target_dist  = 0.0    # 목표 이동 거리 (m)
         self._forward_start_pos    = None   # 출발 AMCL 위치
+        self._forward_speed        = 0.05   # 전진 속도 (m/s)
         self._us_forward_timer     = None   # 초음파 전진 타이머
         self._us_forward_done_cb   = None   # 초음파 정지 후 콜백
         self._yaw_rotate_target    = None
         self._yaw_rotate_timer     = None
         self._yaw_rotate_done_cb   = None
 
-        # ── TF / 퍼블리셔 ──────────────────────────
-        self._tf_buf      = Buffer()
-        self._tf_listener = TransformListener(self._tf_buf, self)
+        # ── 퍼블리셔 ───────────────────────────────
         self._cmd_pub     = self.create_publisher(Twist, f"/{self.ns}/cmd_vel", 10)
 
         # ── 콜백 연결 ──────────────────────────────
@@ -164,8 +168,12 @@ class RobotController(Node):
         for m in markers:
             if self._target_marker_id is not None and m["id"] == self._target_marker_id:
                 if self.visual_dock.active:
+                    # visual_dock 진행 중이면 항상 update (Nav2 도착 후 도킹 포함)
                     self.visual_dock.update(m)
                 elif not self._docking:
+                    # ARRIVAL_US_FORWARD 목적지는 Nav2 도착 후 visual_dock 시작 — 이동 중 취소 안 함
+                    if self._target_location in ARRIVAL_US_FORWARD:
+                        return
                     # 멀리 있으면 Nav2 장애물 회피에 맡기고, 충분히 가까워졌을 때만 시각 서보 시작
                     if m["pixel_size"] < MIN_DOCK_SIZE:
                         return
@@ -239,11 +247,15 @@ class RobotController(Node):
             self._nav_event.set()
             self._nav_event = None
 
-    def _on_dock_done(self, result=None):
+    def _on_dock_done(self, success=True):
         self._docking          = False
         self._target_marker_id = None
-        self.log.info("SYS", "정밀 정차 완료")
-        self._send_callback("arrived")
+        if success:
+            self.log.info("SYS", "정밀 정차 완료")
+            self._send_callback("arrived")
+        else:
+            self.log.warn("SYS", "정밀 정차 실패 (마커 미감지 타임아웃)")
+            self._send_callback("error")
 
     def _on_nav_done(self, success=True):
         if not success:
@@ -269,6 +281,15 @@ class RobotController(Node):
                 done_cb=lambda: self._send_callback("arrived"))
             return
 
+        # 도착 후 cmd_vel로 yaw 정렬
+        if self._target_location in ARRIVAL_YAW_ROTATE:
+            target_yaw = ARRIVAL_YAW_ROTATE[self._target_location]
+            self.log.info("SYS",
+                f"{self._target_location} 도착 → cmd_vel yaw {math.degrees(target_yaw):.1f}° 정렬")
+            self._start_rotate_to_yaw(target_yaw,
+                done_cb=lambda: self._send_callback("arrived"))
+            return
+
         # 도착 후 초음파 감지까지 전진 후 yaw 정렬
         if self._target_location in ARRIVAL_US_STOP:
             self.log.info("SYS",
@@ -276,6 +297,16 @@ class RobotController(Node):
             self._start_us_forward(
                 done_cb=lambda: self._start_rotate_to_yaw(
                     math.pi, done_cb=lambda: self._send_callback("arrived")))
+            return
+
+        # 도착 후 마커 각도 보정 전진 → 초음파 정지 → yaw 정렬 (load_wait_1 등)
+        if self._target_location in ARRIVAL_US_FORWARD:
+            self.log.info("SYS",
+                f"{self._target_location} 도착 → 마커 visual_dock 시작")
+            self._docking = True
+            target_yaw = LOCATIONS.get("zone_1", {}).get("yaw", 0.0)
+            self.visual_dock.start(done_callback=self._on_dock_done,
+                                   target_yaw=target_yaw)
             return
 
         if self._target_marker_id is None or self._docking:
@@ -329,9 +360,10 @@ class RobotController(Node):
         except Exception:
             return 0.20
 
-    def _start_forward(self, distance: float, speed: float = 0.1):
+    def _start_forward(self, distance: float, speed: float = 0.05):
         """cmd_vel로 지정 거리만큼 전진. AMCL 기준 이동 거리 측정, 폴백은 타이머."""
         self._forward_target_dist = distance
+        self._forward_speed       = speed
         self._forward_start_pos   = self._amcl_xy()
         # 폴백: AMCL 없을 때 시간 기반. 여유 2배 확보
         duration = distance / speed
@@ -371,7 +403,7 @@ class RobotController(Node):
                 self._do_navigate(location)
             return
         msg = Twist()
-        msg.linear.x = 0.1
+        msg.linear.x = self._forward_speed
         self._cmd_pub.publish(msg)
 
     def _start_us_forward(self, done_cb=None):
@@ -474,15 +506,37 @@ class RobotController(Node):
 
     # ── Nav2 호출 ──────────────────────────────────
     def _do_navigate(self, location: str):
-        if self._align_yaw is not None:
-            # align_yaw 있으면 현재 yaw로 Nav2 goal 설정 → Nav2가 최종 회전 시도 안 함
-            current_yaw = self._current_map_yaw()
+        if self._align_yaw is not None or location in ARRIVAL_YAW_ROTATE:
+            # cmd_vel로 yaw 정렬할 위치 또는 align_yaw 있으면
+            # 현재 yaw로 Nav2 goal 설정 → Nav2가 최종 회전 시도 안 함
+            current_yaw = self._current_map_yaw() or 0.0
             self.nav.go_to_location(location, callback=self._on_nav_done,
                                     override_yaw=current_yaw)
         else:
             self.nav.go_to_location(location, callback=self._on_nav_done)
 
     def _stop_search(self):
+        self._cmd_pub.publish(Twist())
+
+    def _cancel_all_motion(self):
+        """진행 중인 모든 cmd_vel 발행 타이머/모듈을 강제 정지.
+        새 navigate/stop 명령 진입 시 좀비 타이머가 cmd_vel을 덮어쓰지 않도록 한다."""
+        for attr in ("_rotate_timer", "_forward_timer",
+                     "_us_forward_timer", "_yaw_rotate_timer"):
+            t = getattr(self, attr, None)
+            if t is not None:
+                t.cancel()
+                setattr(self, attr, None)
+        self._forward_start_pos  = None
+        self._pending_navigate   = None
+        self._us_forward_done_cb = None
+        self._yaw_rotate_done_cb = None
+        self._yaw_rotate_target  = None
+        if self.line_tracer.is_active:
+            self.line_tracer.stop()
+        if self.visual_dock.active:
+            self.visual_dock.stop()
+        self._docking = False
         self._cmd_pub.publish(Twist())
 
     # ════════════════════════════════════════════════════════════
@@ -496,7 +550,7 @@ class RobotController(Node):
 
         # ── 이동 / 도킹 / 운반 ──────────────────────
         if action == "navigate":
-            self._stop_search()
+            self._cancel_all_motion()
             self._target_marker_id     = None
             self._task_id              = cmd.get("task_id", "")
             self._line_trace_on_arrive = (params.get("location") == "home")
@@ -537,7 +591,7 @@ class RobotController(Node):
                 self.log.info("SYS",
                     f"{location} 이동 → {prev_location} 출발점까지 {dist:.3f}m 전진 후 Nav2 시작")
                 self._pending_navigate = location
-                self._start_forward(distance=dist, speed=0.1)
+                self._start_forward(distance=dist, speed=0.05)
                 return
 
             self._do_navigate(location)
@@ -553,7 +607,7 @@ class RobotController(Node):
 
         # ── 정지 / 재개 ────────────────────────────
         elif action == "stop":
-            self._stop_search()
+            self._cancel_all_motion()
             self._target_marker_id = None
             self.nav.cancel_navigation()
             self.nav.emergency_stop(activate=True)
