@@ -770,6 +770,10 @@ def ros_spin():
         traceback.print_exc()
 
 
+from .test_routes import router as _test_router
+app.include_router(_test_router)
+
+
 def main():
     global ros_node
     rclpy.init()

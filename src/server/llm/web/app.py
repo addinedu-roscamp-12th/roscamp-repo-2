@@ -62,6 +62,12 @@ def _build_system_prompt(mode: str) -> str:
 [단순 이동] 로봇 직접 이동 명령:
 {{"action": "navigate", "parameters": {{"location": "<장소키>"}}}}
 
+[핑키 출발] 홈에서 앞쪽 핑키를 load_wait_1으로 출발:
+{{"action": "dispatch_pinky", "parameters": {{}}}}
+
+출발 변환 규칙:
+  "앞에 있는 핑키 출발시켜" / "핑키 보내줘" / "핑키 출발" / "로봇 출발" → dispatch_pinky
+
 [정지]: {{"action": "navigate", "parameters": {{"location": "stop"}}}}
 [이해불가]: {{"action": "unknown", "parameters": {{"reason": "<이유>"}}}}
 
@@ -153,6 +159,27 @@ def forward_outbound_to_task_manager(cmd: dict) -> str:
         return f"태스크매니저 오류: {e}"
 
 
+def forward_dispatch_to_task_manager(cmd: dict) -> str:
+    try:
+        resp = requests.post(
+            f"{TASK_MANAGER_URL}/test/stack/dispatch",
+            json={"location": "load_wait_1"},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        picked = data.get("picked_pinky", "?")
+        return f"{picked} → load_wait_1 출발 명령 전송 (task_id: {data.get('task_id', '?')})"
+    except requests.exceptions.ConnectionError:
+        return f"태스크매니저 연결 실패 ({TASK_MANAGER_URL})"
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 503:
+            return "배차 가능한 핑키 없음 — home_stack이 비어있습니다"
+        return f"태스크매니저 오류 ({e.response.status_code}): {e.response.text}"
+    except Exception as e:
+        return f"태스크매니저 오류: {e}"
+
+
 def forward_to_task_manager(cmd: dict) -> str:
     zone = cmd.get("parameters", {}).get("storage_zone")
     if not zone:
@@ -194,6 +221,8 @@ async def command(req: CommandReq):
             result = forward_to_task_manager(cmd)
         elif cmd.get("action") == "outbound_task":
             result = forward_outbound_to_task_manager(cmd)
+        elif cmd.get("action") == "dispatch_pinky":
+            result = forward_dispatch_to_task_manager(cmd)
         else:
             result = forward_navigate_to_task_manager(req.robot, cmd)
 
