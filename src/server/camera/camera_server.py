@@ -26,6 +26,13 @@ def main():
     if not cap.isOpened():
         print(f"[오류] 카메라 {CAMERA_INDEX} 열기 실패")
         return
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    print(f"[카메라] 해상도: {w}x{h}")
 
     clients = set()
     lock = threading.Lock()
