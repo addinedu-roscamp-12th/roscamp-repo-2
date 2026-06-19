@@ -1,0 +1,408 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PaymentDialog</class>
+ <widget class="QDialog" name="PaymentDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1080</width>
+    <height>580</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>BBI Share(Payment) - User</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QDialog {
+    background-color: #0d1117;
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QWidget" name="top_panel" native="true">
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>60</height>
+      </size>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">QWidget#top_panel {
+    background-color: #161b22;
+    border-bottom: 1px solid #30363d;
+}</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout">
+      <item>
+       <widget class="QLabel" name="label_logo">
+        <property name="styleSheet">
+         <string notr="true">QLabel#label_logo {
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    padding: 10px 20px;
+}</string>
+        </property>
+        <property name="text">
+         <string>BBI Share</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_username">
+        <property name="styleSheet">
+         <string notr="true">QLabel#label_username {
+    color: #8b949e;
+    font-size: 14px;
+    padding: 10px 20px;
+}</string>
+        </property>
+        <property name="text">
+         <string>홍길동 님</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="middle_panel" native="true">
+     <layout class="QHBoxLayout" name="horizontalLayout_2">
+      <item>
+       <widget class="QWidget" name="rack_info_panel" native="true">
+        <property name="styleSheet">
+         <string notr="true">QWidget#rack_info_panel {
+    background-color: #161b22;
+    border-radius: 8px;
+    margin: 20px;
+}</string>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_2">
+         <item>
+          <spacer name="verticalSpacer">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_rack_title">
+           <property name="styleSheet">
+            <string notr="true">QLabel#label_rack_title {
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 10px;
+    border-bottom: 1px solid #30363d;
+}</string>
+           </property>
+           <property name="text">
+            <string>선택한 랙 정보</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_rack_id">
+           <property name="styleSheet">
+            <string notr="true">QLabel#label_rack_id {
+    color: #c9d1d9;
+    font-size: 14px;
+    padding: 10px;
+}</string>
+           </property>
+           <property name="text">
+            <string>랙 ID: -</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_rack_zone">
+           <property name="styleSheet">
+            <string notr="true">QLabel#label_rack_zone {
+    color: #c9d1d9;
+    font-size: 14px;
+    padding: 10px;
+}
+</string>
+           </property>
+           <property name="text">
+            <string>위치: -</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="verticalSpacer_2">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QWidget" name="payment_info_panel" native="true">
+        <property name="styleSheet">
+         <string notr="true">QWidget#payment_info_panel {
+    background-color: #161b22;
+    border-radius: 8px;
+    margin: 20px;
+}</string>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_3">
+         <item>
+          <spacer name="verticalSpacer_3">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_period_title">
+           <property name="styleSheet">
+            <string notr="true">QLabel#label_period_title {
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 10px;
+    border-bottom: 1px solid #30363d;
+}</string>
+           </property>
+           <property name="text">
+            <string>공유 기간 선택</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="period_panel" native="true">
+           <property name="styleSheet">
+            <string notr="true">QPushButton#btn_1month, QPushButton#btn_3month, QPushButton#btn_6month {
+    background-color: #1c2128;
+    color: #c9d1d9;
+    border: 2px solid #30363d;
+    border-radius: 6px;
+    font-size: 14px;
+    padding: 10px;
+    min-height: 50px;
+}
+QPushButton:checked {
+    background-color: #1f6feb;
+    border: 2px solid #1f6feb;
+    color: white;
+}</string>
+           </property>
+           <layout class="QHBoxLayout" name="horizontalLayout_3">
+            <item>
+             <widget class="QPushButton" name="btn_1month">
+              <property name="minimumSize">
+               <size>
+                <width>100</width>
+                <height>74</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>120</width>
+                <height>80</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>1개월</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_3month">
+              <property name="maximumSize">
+               <size>
+                <width>120</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>3개월</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_6month">
+              <property name="maximumSize">
+               <size>
+                <width>120</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>6개월</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_amount">
+           <property name="styleSheet">
+            <string notr="true">QLabel#label_amount {
+    color: #3fb950;
+    font-size: 18px;
+    font-weight: bold;
+    padding: 10px;
+}</string>
+           </property>
+           <property name="text">
+            <string>결제 금액: 0원</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="process_panel" native="true">
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>80</height>
+            </size>
+           </property>
+           <layout class="QHBoxLayout" name="horizontalLayout_4">
+            <item>
+             <widget class="QPushButton" name="btn_cancel">
+              <property name="minimumSize">
+               <size>
+                <width>200</width>
+                <height>70</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>200</width>
+                <height>70</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QPushButton#btn_cancel {
+    background-color: transparent;
+    color: #8b949e;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    font-size: 14px;
+    padding: 8px 30px;
+    margin: 10px 5px;
+}
+QPushButton#btn_cancel:hover {
+    background-color: #21262d;
+    color: white;
+}</string>
+              </property>
+              <property name="text">
+               <string>취소</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_pay">
+              <property name="minimumSize">
+               <size>
+                <width>200</width>
+                <height>70</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>200</width>
+                <height>70</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QPushButton#btn_pay {
+    background-color: #1f6feb;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: bold;
+    padding: 8px 30px;
+    margin: 10px 10px;
+}
+QPushButton#btn_pay:hover {
+    background-color: #388bfd;
+}</string>
+              </property>
+              <property name="text">
+               <string>결제</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <spacer name="verticalSpacer_4">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

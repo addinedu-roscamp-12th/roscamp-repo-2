@@ -1,0 +1,593 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="enabled">
+   <bool>true</bool>
+  </property>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1080</width>
+    <height>580</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>BBI Share(Work Dashboard) - Admin</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">background-color: #161b22;</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="layoutDirection">
+    <enum>Qt::LeftToRight</enum>
+   </property>
+   <layout class="QHBoxLayout" name="horizontalLayout">
+    <item>
+     <widget class="QWidget" name="sidebar" native="true">
+      <property name="minimumSize">
+       <size>
+        <width>200</width>
+        <height>550</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>250</width>
+        <height>800</height>
+       </size>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">QWidget#sidebar {
+    background-color: #161b22;
+}
+QPushButton {
+    background-color: transparent;
+    color: #c9d1d9;
+    text-align: left;
+    padding-left: 15px;
+    border: none;
+    font-size: 14px;
+    min-height: 50px;
+}
+QPushButton:checked {
+    background-color: #1f6feb;
+    border-radius: 6px;
+    color: white;
+}
+QPushButton:hover {
+    background-color: #21262d;
+    border-radius: 6px;
+}
+QLabel#label_logo {
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    padding: 10px;
+}</string>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_2">
+       <item>
+        <widget class="QLabel" name="label_logo">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>60</height>
+          </size>
+         </property>
+         <property name="layoutDirection">
+          <enum>Qt::LeftToRight</enum>
+         </property>
+         <property name="text">
+          <string>BBI Share</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btn_task">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>50</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>작업 대시보드</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btn_rack">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>50</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>공유 랙 조회</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btn_user">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>50</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>사용자 조회</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QStackedWidget" name="stacked_widget">
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="page_dashboard">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <widget class="QWidget" name="main_area" native="true">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>0</y>
+          <width>865</width>
+          <height>565</height>
+         </rect>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">background-color: #161b22;</string>
+        </property>
+        <layout class="QGridLayout" name="gridLayout">
+         <item row="1" column="1">
+          <widget class="QLabel" name="camera_view">
+           <property name="minimumSize">
+            <size>
+             <width>480</width>
+             <height>240</height>
+            </size>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QLabel#camera_view {
+    background-color: #1c2128;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLabel" name="camera_label">
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>50</height>
+            </size>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QLabel#camera_label {
+    color: white;
+    font-size: 15px;
+    font-weight: bold;
+    padding: 10px;
+    border-bottom: 1px solid #30363d;
+}</string>
+           </property>
+           <property name="text">
+            <string>상황 영상</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="2" rowspan="2">
+          <widget class="QWidget" name="log_panel" native="true">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>300</width>
+             <height>500</height>
+            </size>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QWidget#log_panel {
+    background-color: #161b22;
+    border-left: 1px solid #30363d;
+}
+QLabel#label_log_title {
+    color: white;
+    font-size: 15px;
+    font-weight: bold;
+    padding: 10px;
+    border-bottom: 1px solid #30363d;
+}
+QListWidget {
+    background-color: transparent;
+    border: none;
+    color: #c9d1d9;
+    font-size: 12px;
+}
+QListWidget::item {
+    background-color: #1c2128;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 6px;
+    margin: 2px;
+}
+QListWidget::item:selected {
+    background-color: #1f6feb;
+}</string>
+           </property>
+           <layout class="QVBoxLayout" name="verticalLayout">
+            <item>
+             <widget class="QLabel" name="label_log_title">
+              <property name="maximumSize">
+               <size>
+                <width>16777215</width>
+                <height>40</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>작업 로그</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QListWidget" name="log_list">
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>300</width>
+                <height>510</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QListWidget#log_list {
+    background-color: #1c2128;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+}</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item row="2" column="1" colspan="2">
+          <widget class="QTableWidget" name="robot_table">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>150</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>200</height>
+            </size>
+           </property>
+           <property name="layoutDirection">
+            <enum>Qt::LeftToRight</enum>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QTableView {
+    background-color: #1c2128;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    color: #c9d1d9;
+    font-size: 16px;
+    gridline-color: #30363d;
+}
+QHeaderView::section {
+    background-color: #161b22;
+    color: #8b949e;
+    padding: 8px;
+    border: 1px solid #30363d;
+    font-weight: bold;
+}
+QTableView::item {
+    padding: 8px;
+}
+QTableView::item:selected {
+    background-color: #1f6feb;
+}</string>
+           </property>
+           <property name="lineWidth">
+            <number>1</number>
+           </property>
+           <property name="editTriggers">
+            <set>QAbstractItemView::NoEditTriggers</set>
+           </property>
+           <property name="selectionBehavior">
+            <enum>QAbstractItemView::SelectRows</enum>
+           </property>
+           <property name="rowCount">
+            <number>4</number>
+           </property>
+           <attribute name="horizontalHeaderCascadingSectionResizes">
+            <bool>false</bool>
+           </attribute>
+           <attribute name="horizontalHeaderShowSortIndicator" stdset="0">
+            <bool>false</bool>
+           </attribute>
+           <attribute name="horizontalHeaderStretchLastSection">
+            <bool>false</bool>
+           </attribute>
+           <attribute name="verticalHeaderVisible">
+            <bool>false</bool>
+           </attribute>
+           <row/>
+           <row/>
+           <row/>
+           <row/>
+           <column>
+            <property name="text">
+             <string>로봇 ID</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>로봇 타입</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>상태</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>위치</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>배터리</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+      <widget class="QWidget" name="page_rack">
+       <widget class="QTableWidget" name="rack_table">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>10</y>
+          <width>865</width>
+          <height>565</height>
+         </rect>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QTableView {
+    background-color: #1c2128;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    color: #c9d1d9;
+    font-size: 16px;
+    gridline-color: #30363d;
+}
+QHeaderView::section {
+    background-color: #161b22;
+    color: #8b949e;
+    padding: 8px;
+    border: 1px solid #30363d;
+    font-weight: bold;
+}
+QTableView::item {
+    padding: 8px;
+}
+QTableView::item:selected {
+    background-color: #1f6feb;
+}</string>
+        </property>
+        <property name="rowCount">
+         <number>16</number>
+        </property>
+        <attribute name="verticalHeaderVisible">
+         <bool>false</bool>
+        </attribute>
+        <attribute name="verticalHeaderCascadingSectionResizes">
+         <bool>false</bool>
+        </attribute>
+        <attribute name="verticalHeaderShowSortIndicator" stdset="0">
+         <bool>false</bool>
+        </attribute>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <column>
+         <property name="text">
+          <string>랙 ID</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>위치</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>상태</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>사용자 ID</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>공유 기간</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>만료일</string>
+         </property>
+        </column>
+       </widget>
+      </widget>
+      <widget class="QWidget" name="page_user">
+       <widget class="QTableWidget" name="user_table">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>10</y>
+          <width>865</width>
+          <height>565</height>
+         </rect>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QTableView {
+    background-color: #1c2128;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    color: #c9d1d9;
+    font-size: 16px;
+    gridline-color: #30363d;
+}
+QHeaderView::section {
+    background-color: #161b22;
+    color: #8b949e;
+    padding: 8px;
+    border: 1px solid #30363d;
+    font-weight: bold;
+}
+QTableView::item {
+    padding: 8px;
+}
+QTableView::item:selected {
+    background-color: #1f6feb;
+}</string>
+        </property>
+        <property name="rowCount">
+         <number>16</number>
+        </property>
+        <property name="columnCount">
+         <number>5</number>
+        </property>
+        <attribute name="horizontalHeaderHighlightSections">
+         <bool>true</bool>
+        </attribute>
+        <attribute name="verticalHeaderVisible">
+         <bool>false</bool>
+        </attribute>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <column>
+         <property name="text">
+          <string>유저 ID</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>이름</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>전화번호</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>역할</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>가입일</string>
+         </property>
+        </column>
+       </widget>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
