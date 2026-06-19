@@ -1,0 +1,333 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>WorkRequestDialog</class>
+ <widget class="QDialog" name="WorkRequestDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1080</width>
+    <height>580</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>BBI Share - 작업 요청</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QDialog {
+    background-color: #0d1117;
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>0</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="QWidget" name="top_panel" native="true">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>60</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>60</height>
+      </size>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">QWidget#top_panel {
+    background-color: #161b22;
+    border-bottom: 1px solid #30363d;
+}</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout_top">
+      <property name="leftMargin">
+       <number>15</number>
+      </property>
+      <property name="rightMargin">
+       <number>15</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="label_logo">
+        <property name="styleSheet">
+         <string notr="true">QLabel#label_logo {
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+}</string>
+        </property>
+        <property name="text">
+         <string>BBI Share</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer_top">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_rack_info">
+        <property name="minimumSize">
+         <size>
+          <width>100</width>
+          <height>30</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QLabel#label_rack_info {
+    color: #3fb950;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 4px 12px;
+    border: 1px solid #3fb950;
+    border-radius: 4px;
+}</string>
+        </property>
+        <property name="text">
+         <string>A구역 01번</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_username">
+        <property name="styleSheet">
+         <string notr="true">QLabel#label_username {
+    color: #8b949e;
+    font-size: 14px;
+    padding: 0px 15px;
+}</string>
+        </property>
+        <property name="text">
+         <string>홍길동 님</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_logout">
+        <property name="minimumSize">
+         <size>
+          <width>80</width>
+          <height>32</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QPushButton#btn_logout {
+    background-color: transparent;
+    color: #f85149;
+    border: 1px solid #f85149;
+    border-radius: 4px;
+    font-size: 13px;
+    padding: 4px 15px;
+}
+QPushButton#btn_logout:hover {
+    background-color: #3d1a1a;
+}</string>
+        </property>
+        <property name="text">
+         <string>로그아웃</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="label_robot_image">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>120</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>120</height>
+      </size>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">QLabel#label_robot_image {
+    background-color: #0d1117;
+    padding: 10px;
+}</string>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="middle_panel" native="true">
+     <property name="styleSheet">
+      <string notr="true">QWidget#middle_panel {
+    background-color: #0d1117;
+}</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_middle">
+      <property name="leftMargin">
+       <number>40</number>
+      </property>
+      <property name="topMargin">
+       <number>10</number>
+      </property>
+      <property name="rightMargin">
+       <number>40</number>
+      </property>
+      <property name="bottomMargin">
+       <number>20</number>
+      </property>
+      <property name="spacing">
+       <number>15</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="label_guide">
+        <property name="styleSheet">
+         <string notr="true">QLabel#label_guide {
+    color: #8b949e;
+    font-size: 14px;
+}</string>
+        </property>
+        <property name="text">
+         <string>입고 또는 출고 요청 내용을 자연어로 입력해주세요.</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPlainTextEdit" name="input_request">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>1</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QPlainTextEdit#input_request {
+    background-color: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    padding: 10px;
+}
+QPlainTextEdit#input_request:focus {
+    border: 1px solid #1f6feb;
+}</string>
+        </property>
+        <property name="placeholderText">
+         <string>예) A구역 01번 랙에 노트북 입고 요청합니다.</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="bottom_panel" native="true">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>60</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>60</height>
+      </size>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">QWidget#bottom_panel {
+    background-color: #161b22;
+    border-top: 1px solid #30363d;
+}</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout_bottom">
+      <property name="leftMargin">
+       <number>15</number>
+      </property>
+      <property name="rightMargin">
+       <number>15</number>
+      </property>
+      <item>
+       <spacer name="horizontalSpacer_bottom">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_start">
+        <property name="minimumSize">
+         <size>
+          <width>120</width>
+          <height>36</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QPushButton#btn_start {
+    background-color: #1f6feb;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: bold;
+    padding: 8px 30px;
+}
+QPushButton#btn_start:hover {
+    background-color: #388bfd;
+}
+QPushButton#btn_start:pressed {
+    background-color: #1158c7;
+}</string>
+        </property>
+        <property name="text">
+         <string>작업 시작</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
