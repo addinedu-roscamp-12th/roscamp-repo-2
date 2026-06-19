@@ -11,17 +11,17 @@ cv_node.py ─ 카메라 + 블럭 검출 Action Client 노드
 
 import json
 import uuid
-
+import time
 import rclpy
+
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-from std_msgs.msg import String
+from std_msgs.msg import Bool
 
-from jetcobot_interfaces.action import RobotCommand
+from ppibigi_interfaces.action import RobotCommand
 from jetcobot2.cv_lib import process_frame
-
 
 class CvNode(Node):
     def __init__(self):
@@ -31,14 +31,19 @@ class CvNode(Node):
         self._busy        = False
         self._action_type = "do_load"  # 기본값
         self._target_item = "물병"     # 출고 시 품목
+        self._detect_enabled  = True   # 감지 모드 
+        self._last_goal_time = 0.0
 
         self._action_client = ActionClient(self, RobotCommand, 'jetcobot2/command')
 
         # 카메라 토픽 구독
         self.create_subscription(Image, 'camera/image', self._image_callback, 10)
 
-        # 모드 변경 토픽 구독
-        self.create_subscription(String, '/cv_mode', self._mode_callback, 10)
+        # 모드 변경 토픽 구독 - 토픽 구독으로 action type을 변경하고 싶을 때
+        # self.create_subscription(String, '/cv_mode', self._mode_callback, 10)
+
+        # 감지 허용 신호 구독
+        self.create_subscription(Bool, 'detect_enable', self._detect_enable_callback, 10)
 
         self.get_logger().info("cv_node 시작 — camera/image 구독 중")
 
@@ -58,24 +63,34 @@ class CvNode(Node):
             )
         except Exception as e:
             self.get_logger().error(f"모드 변경 실패: {msg.data}, 오류: {e}")
+    
+    def _detect_enable_callback(self, msg):
+        self._detect_enabled = msg.data
+        self.get_logger().info(
+            f"감지 {'허용' if msg.data else '금지'}"
+        )
 
     def _image_callback(self, msg: Image):
         """카메라 프레임 수신 → 블럭 검출 → Goal 전송"""
         if self._busy:
             return
+        if not self._detect_enabled:
+            return
+        if time.time() - self._last_goal_time < 5.0:
+            return
 
         frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        detected, cx, cy, area, hor, ver, ar, _ = process_frame(frame)
+        detected, cx, cy, _ = process_frame(frame)
 
         if detected:
             self._busy = True
+            self._last_goal_time = time.time()
             self.get_logger().info(
-                f"블럭 감지! cx={cx:.1f}, cy={cy:.1f}, area={area:.0f}, "
-                f"hor={hor:.0f}, ver={ver:.0f}, ar={ar:.2f} → Goal 전송"
+                f"블럭 감지! cx={cx:.1f}, cy={cy:.1f} → Goal 전송"
             )
-            self._send_goal(detected, cx, cy, area, hor, ver, ar)
+            self._send_goal(detected, cx, cy)
 
-    def _send_goal(self, detected, cx, cy, area, hor, ver, ar):
+    def _send_goal(self, detected, cx, cy):
         """Action Server로 Goal 전송"""
         if not self._action_client.wait_for_server(timeout_sec=1.0):
             self.get_logger().warn("arm_node 가 아직 준비 안 됨 — 스킵")
@@ -89,10 +104,6 @@ class CvNode(Node):
             "detected":    detected,
             "result_cx":   round(cx,   2),
             "result_cy":   round(cy,   2),
-            "result_area": round(area, 2),
-            "result_hor":  round(hor,  2),
-            "result_ver":  round(ver,  2),
-            "result_ar":   round(ar,   2),
             "target_item": self._target_item,
         })
 
@@ -100,7 +111,7 @@ class CvNode(Node):
             goal_msg, feedback_callback=self._feedback_callback
         )
         send_future.add_done_callback(self._goal_response_callback)
-
+    
     def _goal_response_callback(self, future):
         """Goal 수락/거절 처리"""
         goal_handle = future.result()
@@ -130,6 +141,7 @@ class CvNode(Node):
 
         if result.event in ["done", "error", "canceled"]:
             self._busy = False
+            self._last_goal_time = time.time() # 쿨다운
             self.get_logger().info("다음 블럭 감지 대기 중...")
         else:
             self.get_logger().warn(f"예상치 못한 event: '{result.event}' → busy 유지")
