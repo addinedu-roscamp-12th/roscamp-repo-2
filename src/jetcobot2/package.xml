@@ -8,7 +8,7 @@
   
   <depend>rclpy</depend>
   <depend>rclpy_action</depend>
-  <depend>pinky_msgs</depend>
+  <depend>ppibigi_interfaces</depend>
 
   <export>
     <build_type>ament_python</build_type>

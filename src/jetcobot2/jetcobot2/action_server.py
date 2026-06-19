@@ -6,23 +6,25 @@ JetCobot2 ROS2 액션 서버 (Jazzy)
 import time
 import json
 import logging
- 
 import numpy as np
 import rclpy
+
 from rclpy.node import Node
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
  
 from pymycobot.mycobot280 import MyCobot280
-from pymycobot.genre import Angle
 from std_msgs.msg import String
+from std_msgs.msg import Bool
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
+from std_msgs.msg import Empty
  
 from jetcobot2.rack_detector import RackSpaceDetector
-from jetcobot_interfaces.action import RobotCommand
-from jetcobot2.qr_detector import scan_qr
+from ppibigi_interfaces.action import RobotCommand
+from jetcobot2.qr_detector import scan_qr, draw_qr_debug
+from jetcobot2.cv_lib import get_filtered_cx_cy
  
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("jetcobot2")
@@ -30,232 +32,293 @@ logger = logging.getLogger("jetcobot2")
 # ──────────────────────────────────────────────
 # 모든 좌표를 send_angles 기준으로 정의
 # ──────────────────────────────────────────────
- 
-# 입고용 Place 좌표 (모두 각도 - do_load)
+
+# 공통 초기화 위치
+HOME_INIT_ANGLE = [87.45, 6.15, -1.05, -1.75, -0.7, -45.26] # 홈 자세 위치
+WORK_INIT_ANGLE = [87.45, 6.15, -1.05, -1.75, -0.7, -45.26] # 작업 초기화 위치 (각도, do_load & do_unload)
+OUT_WORK_INIT_ANGLE = [-88.59, 1.66, -0.79, 1.58, 5.09, -43.06] # 출고 작업 초기화 위치(outbound_place)
+#---------------------------------------------------------------------------------------
+# do_load
+LOAD_PICK_COORDS = [91.66, -32.43, -4.57, -23.02, -2.54, -40.86] # load pick 작업 위치 (각도, do_load)
+RACK_SCAN_ANGLE = [91.75, -3.33, -87.18, 0.79, -50.0, 46.75] # 랙 스캔 위치 (각도, do_load)
 LOAD_PLACE_COORDS = {
-    'floor2_left': {
-        'approach': [94.3, -60.2, -88.68, 144.75, -2.63, -48.51],
-        'place':    [94.3, -60.2, -88.68, 144.75, -2.63, -48.51],  # ← 실제 각도로 교체
-        'retreat':  [94.3, -60.2, -88.68, 144.75, -2.63, -48.51],  # ← 실제 각도로 교체
-    },
-    'floor2_right': {
-        'approach': [75.93, -66.7, -66.26, 126.65, 15.2, -42.01],
-        'place':    [75.93, -66.7, -66.26, 126.65, 15.2, -42.01],  # ← 실제 각도로 교체
-        'retreat':  [75.93, -66.7, -66.26, 126.65, 15.2, -42.01],  # ← 실제 각도로 교체
-    },
-}
- 
-# 랙 스캔 위치 (각도만 사용 - do_load)
-RACK_SCAN_ANGLES = [78.04, -102.21, -13.27, 118.91, 98.7, -42.97]
- 
-# QR 스캔 위치 (각도만 사용 - do_unload)
+        'approach': [103.05, -106.87, -1.23, 112.23, -107.66, -48.6],  
+        'place':    [77.95, -96.59, -19.59, 91.58, -80.15, -19.86],  
+        'retreat':  [103.79, -103.44, -1.23, 106.43, -104.23, -45.7],  
+} # load Place 좌표 (각도, do_load)
+#---------------------------------------------------------------------------------------
+# do_unload
 QR_SCAN_ANGLES = {
-    'floor2_left':  [89.64, -132.71, 55.98, 75.76, 0.35, -45.61],
-    'floor2_right': [62.31, -88.06, -40.51, 122.25, 24.69, -44.56],
-}
- 
-# 출고용 Pick 좌표 (모두 각도 - do_unload)
+    'floor2_left':  [100.81, -123.22, -0.43, 121.64, -100.38, -39.9],
+    'floor2_right': [100.81, -123.22, -0.43, 121.64, -105.38, -39.9],
+} # QR 스캔 위치 (각도, do_unload)
 UNLOAD_PICK_COORDS = {
-    'floor2_left': {
-        'approach': [87.27, -76.28, -53.17, 130.86, 0.43, -45.43],
-        'pick':     [87.27, -76.28, -53.17, 130.86, 0.43, -45.43],  # ← 실제 각도로 교체
-        'retreat':  [87.27, -76.28, -53.17, 130.86, 0.43, -45.43],  # ← 실제 각도로 교체
-    },
-    'floor2_right': {
-        'approach': [111.26, -100.19, -2.1, 103.97, 61.52, -36.73],
-        'pick':     [111.26, -100.19, -2.1, 103.97, 61.52, -36.73],  # ← 실제 각도로 교체
-        'retreat':  [111.26, -100.19, -2.1, 103.97, 61.52, -36.73],  # ← 실제 각도로 교체
-    },
-}
- 
-# 운반대 Place 좌표 (모두 각도 - do_unload)
+        'approach': [103.05, -106.87, -1.23, 112.23, -107.66, -48.6],   
+        'pick':     [75.41, -97.64, -1.58, 76.11, -76.55, -17.22],  
+        'retreat':  [103.79, -103.44, -1.23, 106.43, -104.23, -45.7],  
+} # 출고용 Pick 좌표 (각도, do_unload)
 CART_PLACE_COORDS = {
-    'approach': [88.33, -20.91, -121.55, 44.03, -4.3, -40.86],
-    'place':    [88.33, -20.91, -121.55, 44.03, -4.3, -40.86],  # ← 실제 각도로 교체
-    'up':       [88.33, -20.91, -121.55, 44.03, -4.3, -40.86],  # ← 실제 각도로 교체
-}
-
-# 출고 컨베이어 Place 좌표 (모두 각도)
+    'approach': [88.15, -67.23, -1.49, 29.97, -5.36, -46.05],
+    'place':    [87.97, -69.34, -1.14, 29.79, -4.13, -46.05],  
+    'up':       [87.97, -56.42, -1.49, 22.14, -4.48, -46.4],  
+} # 운반대 Place 좌표 (각도, do_unload)
+#---------------------------------------------------------------------------------------
+# outbound_place
 CONVEYOR_PLACE_COORDS = {
-    'approach': [0, 0, 0, 0, 0, 0],  # ← 측정 필요
-    'place':    [0, 0, 0, 0, 0, 0],  # ← 측정 필요
-    'up':       [0, 0, 0, 0, 0, 0],  # ← 측정 필요
-}
+    'approach': [-83.05, -4.83, 1.58, -60.2, -4.74, -32.87],  
+    'place':    [-87.89, -30.14, -0.08, -15.55, -5.18, -41.57],  
+    'up':       [-87.8, -23.9, -0.17, -9.66, -4.21, -39.19],  
+} # 출고 컨베이어 Place 좌표 (각도, outbound_place)
+#---------------------------------------------------------------------------------------
 
-# 운반대 카메라 인식 지점 (outbound_pickup용)
-OUTBOUND_CAM_ANGLES = [0, 0, 0, 0, 0, 0]  # ← 측정 필요
 
-# 운반대 Pick 좌표 (outbound_pickup용)
-OUTBOUND_PICK_COORDS = {
-    'approach': [0, 0, 0, 0, 0, 0],  # ← 측정 필요
-    'pick':     [0, 0, 0, 0, 0, 0],  # ← 측정 필요
-    'retreat':  [0, 0, 0, 0, 0, 0],  # ← 측정 필요
-}
- 
- 
 class RobotController:
     def __init__(self):
         self.mc             = MyCobot280('/dev/ttyJETCOBOT', 1000000)
         self.mc.thread_lock = True
-        self.rack_detector  = RackSpaceDetector(min_contour_area=3000)
+        self.rack_detector  = RackSpaceDetector(
+            white_ratio_threshold=0.07,
+            roi_x1=30,
+            roi_y1=10,
+            roi_x2=600,
+            roi_y2=220,
+            block_size = 51,
+            c_value = -10
+        )
         logger.info("로봇 연결 완료")
  
     def go_home(self, feedback_cb):
         """홈 자세로 복귀 + 그리퍼 열기"""
         feedback_cb("홈 위치로 이동")
-        self.mc.send_angles([85, 0, 0, 0, 0, -47], 50)
+        self.mc.send_angles(HOME_INIT_ANGLE, 50)
         self.mc.set_gripper_value(100, 50)
         time.sleep(2)
- 
-    # ──────────────────────────────────────────
-    # send_angles를 쓰는 경우:
-    #   고정된 위치로 이동 (QR 스캔, Pick, Place, 홈 등)
-    #
-    # send_coords + ctrl_moving을 쓰는 경우:
-    #   cx, cy 등 동적으로 계산된 위치로 이동
-    #   (현재 do_load의 운반대 박스 Pick만 해당)
-    # ──────────────────────────────────────────
- 
-    def ctrl_moving(self, tar_coo):
-        """XYZ 좌표 이동 + 오차 보정 (동적 위치에만 사용)"""
+  
+    def ctrl_moving(self, tar_coo, feedback_cb = None):
+        """XYZ 좌표 이동 + 오차 보정""" 
         time.sleep(1)
         self.mc.send_coords(tar_coo, 60)
-        time.sleep(0.5)
+        time.sleep(1)  # ← 대기 시간 늘리기 (이동 완료 전에 get_coords 하면 오차 큼)
 
-        MAX_ITER  = 3      # 최대 보정 횟수
-        THRESHOLD = 2.0    # 허용 오차 (mm)
+        MAX_ITER  = 3
+        THRESHOLD = 5.0
 
         for i in range(MAX_ITER):
             coords = np.array(self.mc.get_coords())
             error  = coords - np.array(tar_coo)
-            print(f"[{i+1}회] 오차: {np.round(error[:3], 2)}")
 
-            # XYZ 오차가 허용 범위 안이면 조기 종료
-            if np.all(np.abs(error[:3]) < THRESHOLD):
-                print(f"[{i+1}회] 오차 허용 범위 내 → 보정 완료")
+            if feedback_cb:
+                feedback_cb(f"[보정 {i+1}회] 오차: {np.round(error[:3], 2)}")
+
+            if np.all(np.abs(error[:2]) < THRESHOLD):  # Z 제외 (X/Y만 판단)
+                if feedback_cb:
+                    feedback_cb(f"[보정 {i+1}회] 오차 허용 범위 내 → 보정 완료")
                 break
 
-            # XYZ만 보정
+            # coords 기준으로 오차만큼 빼기 (= tar_coo로 재이동)
             corrected = np.array(tar_coo, dtype=float)
-            for j in range(3):
-                corrected[j] = tar_coo[j] - error[j]
+            corrected[:3] = np.array(coords[:3]) - error[:3]
 
             self.mc.send_coords(corrected.tolist(), 20)
-            time.sleep(0.3)
+            time.sleep(1)
 
         coords = np.array(self.mc.get_coords())
         error  = coords - np.array(tar_coo)
-        print(f"최종 오차: {np.round(error[:3], 2)}")
+        if feedback_cb:
+            feedback_cb(f"최종 오차: {np.round(error[:3], 2)}")
  
-    def _move_angles(self, angles, speed=30, wait=1.5):
+    def _move_angles(self, angles, speed=30, wait=2.0):
         """send_angles 래퍼 - 이동 후 대기"""
         self.mc.send_angles(angles, speed)
         time.sleep(wait)
  
     def _scan_rack(self, feedback_cb, node=None):
-        """랙 스캔 위치로 이동 후 빈 공간 감지"""
         feedback_cb("랙 스캔 위치로 이동")
-        # ✅ send_angles만 사용
-        self._move_angles(RACK_SCAN_ANGLES, speed=30, wait=2)
- 
+        if node: node._set_detect(False)
+        self._move_angles(RACK_SCAN_ANGLE, speed=30, wait=2)
+
+        feedback_cb("카메라 안정화 대기 중...")
+
+        # 가벼운 원본 프레임만 publish
+        stabilize_start = time.time()
+        while time.time() - stabilize_start < 2.0:
+            frame = node._last_frame if node is not None else None
+            if frame is not None and node:
+                node.publish_debug_frame(frame)
+            time.sleep(0.2)
+
         feedback_cb("랙 빈 공간 스캔 중...")
-        time.sleep(1)
-        frame = node._last_frame if node is not None else None
- 
-        if frame is None:
+
+        results = []
+        for i in range(5):
+            time.sleep(0.3)
+            frame = node._last_frame if node is not None else None
+            if frame is None:
+                continue
+            result = self.rack_detector.detect(frame)
+            # Flask 화면에 랙 스캔 ROI/상태 시각화
+            if node: node.publish_debug_frame(result['debug_frame'])
+            results.append(result)
+
+        if not results:
             feedback_cb("카메라 프레임 없음 → 스캔 실패")
+            if node: node._set_detect(True)
+            if node: node.clear_debug_frame()
             return None
- 
-        result = self.rack_detector.detect(frame)
+    
+       
+        # dict에서 left_empty/right_empty를 꺼내서 기존 다수결 로직 유지
+        left_votes  = sum(1 for r in results if r['left_empty'])
+        right_votes = sum(1 for r in results if r['right_empty'])
+        total       = len(results)
+
+        left_empty  = left_votes  > total // 2
+        right_empty = right_votes > total // 2
+
+        if node: node._set_detect(True)
+
         feedback_cb(
-            f"스캔 결과 → 좌측: {'비어있음' if result['left_empty'] else '박스있음'}, "
-            f"우측: {'비어있음' if result['right_empty'] else '박스있음'}"
+            f"스캔 결과 → "
+            f"좌측: {'비어있음' if left_empty  else '박스있음'} ({left_votes}/{total}), "
+            f"우측: {'비어있음' if right_empty else '박스있음'} ({right_votes}/{total})"
         )
- 
-        if result['left_empty']:
+
+        time.sleep(1.0) # 결과를 화면에서 더 보여줌
+
+        if node: node.clear_debug_frame()
+
+        if left_empty:
             return 'floor2_left'
-        elif result['right_empty']:
+        elif right_empty:
             return 'floor2_right'
         else:
             return None
- 
-    def do_load(self, feedback_cb, detected=False, cx=0.0, cy=0.0,
-            area=0.0, hor=0.0, ver=0.0, ar=0.0, node=None):
+        
+    def check_gripper_grasp(self, feedback_cb, empty_threshold=10, max_retry=2):
         """
-        입고 동작
-        ✅ send_angles: 홈, 카메라 인식 지점, 랙 스캔, Place
-        ✅ cx,cy 기반 1회 보정: 운반대 박스 Pick
+        그리퍼로 물체를 잡았는지 확인
+        Args:
+            empty_threshold: 빈 상태로 간주할 그리퍼 값 (이하면 미집힘)
+            max_retry: 재시도 횟수
+        
+        Returns:
+            bool: 물체를 잡았으면 True
         """
+        for attempt in range(max_retry + 1):
+            time.sleep(0.5)  # 그리퍼 안정화 대기
+            gripper_value = self.mc.get_gripper_value()
+            feedback_cb(f"그리퍼 값 확인: {gripper_value} (시도 {attempt+1}/{max_retry+1})")
 
-        # [1] 홈 자세
-        feedback_cb("[1] 홈 자세 이동")
-        self.go_home(feedback_cb)
+            if gripper_value > empty_threshold:
+                feedback_cb(f"물체 감지됨 (gripper={gripper_value})")
+                return True
 
-        # [2] 카메라 인식 지점 이동
-        feedback_cb("[2] 카메라 인식 지점 이동")
-        self._move_angles([95.09, -114.34, 108.28, -76.02, -5.53, -37.17], speed=50, wait=2)
+            if attempt < max_retry:
+                feedback_cb("물체 미감지 → 재시도")
+                self.mc.set_gripper_value(100, 50)  # 그리퍼 열기
+                time.sleep(0.5)
+                self.mc.set_gripper_value(0, 50)    # 다시 닫기 (Pick 재시도)
+                time.sleep(0.7)
 
-        # [3] 박스 감지 확인
-        feedback_cb("[3-1] 박스 감지 확인")
-        time.sleep(1)
-        feedback_cb(f"[3-2] 박스 감지 → cx={cx:.1f}, cy={cy:.1f}, area={area:.0f}")
+        feedback_cb("물체 Pick 실패 (최대 재시도 초과)")
+        return False
 
-        if not detected:
+    def do_load(self, feedback_cb, node=None):
+        """입고 동작"""
+        # --------------------------------------------------------------------------------
+        # do_load() pick 파트 시작
+        # 카메라 인식 지점 이동
+        feedback_cb("카메라 인식 지점 이동")
+        if node: node._set_detect(False)
+        self._move_angles(LOAD_PICK_COORDS, speed = 40, wait = 2.0)
+        if node: node._set_detect(True)
+
+        # 필터링 - N프레임 중앙값으로 cx, cy 획득
+        feedback_cb("박스 위치 필터링 중...")
+        cx, cy = get_filtered_cx_cy(
+            frame_getter=lambda: node._last_frame,
+            n_frames=5,
+            feedback_cb=feedback_cb
+        )
+
+        if cx is None:
             feedback_cb("박스 미감지 → 픽업 중단")
             self.go_home(feedback_cb)
+            if node: node._set_detect(True)
             return
 
-        # [4] cx, cy 기반 목표 좌표 보정
-        feedback_cb("[4] 박스 위치 보정 계산")
+        feedback_cb(
+            f"필터링 완료 → "
+            f"cx={cx:.1f}, cy={cy:.1f}"
+        )
 
+        # cx, cy 기반 목표 좌표 보정
+        feedback_cb("박스 위치 보정 계산")
+
+        COORD_LIMITS = {
+            'x': (-281.45, 281.45),
+            'y': (-281.45, 281.45),
+            'z': (-70.0,   435.0),
+        }
         # 화면 중앙 기준 오차 계산
         CENTER_X     = 320    # 카메라 해상도 640 기준
         CENTER_Y     = 240    # 카메라 해상도 480 기준
-        PIXEL_TO_MM  = 0.5   # 1픽셀 = 0.5mm (캘리브레이션 필요)
+        PIXEL_TO_MM  = 0.2   # 2픽셀 = 0.2mm
 
-        error_x = cx - CENTER_X  # 픽셀 단위 오차
+        error_x = cx - CENTER_X
         error_y = cy - CENTER_Y
 
-        # 기본 목표 좌표
-        base_coords = [56.6, 239.3, 147.7, -178.92, -8.0, 40.24]
+        # 기본 목표 좌표 - 박스를 pick할 좌표 
+        base_coords = [78.0, 269.3, 234.4, -149.58, -29.89, 32.69]
 
         # cx, cy 오차로 XY 보정
         corrected_coords = base_coords.copy()
         corrected_coords[0] -= error_x * PIXEL_TO_MM  # X축 보정
         corrected_coords[1] += error_y * PIXEL_TO_MM  # Y축 보정
 
+        # 범위 초과 방지 클리핑
+        corrected_coords[0] = max(COORD_LIMITS['x'][0],
+                            min(COORD_LIMITS['x'][1], corrected_coords[0]))
+        corrected_coords[1] = max(COORD_LIMITS['y'][0],
+                            min(COORD_LIMITS['y'][1], corrected_coords[1]))
+        corrected_coords[2] = max(COORD_LIMITS['z'][0],
+                            min(COORD_LIMITS['z'][1], corrected_coords[2]))
+
         feedback_cb(
-            f"[4] 보정값 → error_x={error_x:.1f}px, error_y={error_y:.1f}px "
-            f"→ X보정={-error_x * PIXEL_TO_MM:.1f}mm, Y보정={error_y * PIXEL_TO_MM:.1f}mm"
+            f"보정값 → "
+            f"error_x={error_x:.1f}px, error_y={error_y:.1f}px "
+            f"→ X보정={-error_x * PIXEL_TO_MM:.1f}mm, "
+            f"Y보정={error_y * PIXEL_TO_MM:.1f}mm"
         )
 
-        # [5] 보정된 좌표로 이동
-        feedback_cb("[5] 보정된 목표 좌표로 이동")
-        self.ctrl_moving(corrected_coords)
-        time.sleep(0.5)
+        # ctrl_moving - 보정 좌표로 이동 + 관절 오차 보정
+        feedback_cb("보정된 목표 좌표로 이동")
+        self.ctrl_moving(corrected_coords, feedback_cb=feedback_cb)
+        time.sleep(0.7)
 
-        # [6] 그리퍼 열기
-        feedback_cb("[6] 그리퍼 열기")
-        self.mc.set_gripper_value(100, 50)
-        time.sleep(0.5)
-
-        # [7] 하강
-        feedback_cb("[7] 하강")
-        self.mc.send_coords([61.0, 243.5, 115.6, -178.65, -4.93, 36.74], 30)
-        time.sleep(0.5)
-
-        # [8] 그리퍼 닫기 (Pick)
-        feedback_cb("[8] 그리퍼 닫기 (Pick)")
+        # 그리퍼 닫기 (Pick)
+        feedback_cb("그리퍼 닫기 (Pick)")
         self.mc.set_gripper_value(0, 50)
         time.sleep(0.7)
 
-        # [9] 상승
-        feedback_cb("[9] 상승")
-        self.mc.send_coords([60.9, 235.8, 155.4, -176.67, -6.93, 43.56], 30)
-        time.sleep(0.5)
+        # Pick 성공 여부 확인
+        if not self.check_gripper_grasp(feedback_cb, empty_threshold=10, max_retry=2):
+            feedback_cb("Pick 실패 → 동작 중단")
+            self.go_home(feedback_cb)
+            if node: node._set_detect(True)
+            return
 
-        # [10] 랙 스캔
-        feedback_cb("[10] 랙 빈 공간 스캔")
+        # 상승
+        feedback_cb("상승")
+        self._move_angles([86.92, -40.86, -1.23, 1.31, 1.58, -45.08], speed=30, wait=2.0)
+        time.sleep(0.5)
+        # do_load() pick 파트 종료
+        # -----------------------------------------------------------------------------------
+
+        # ---------------------------------------------------------------------------------
+        # do_load() rack scan 파트 시작
+        # 랙 스캔
+        feedback_cb("랙 빈 공간 스캔")
         target_slot = self._scan_rack(feedback_cb, node=node)
 
         if target_slot is None:
@@ -264,57 +327,82 @@ class RobotController:
             return
 
         feedback_cb(f"빈 공간 확인 → {target_slot} 에 적재")
-        coords = LOAD_PLACE_COORDS[target_slot]
 
-        # [11] 접근 위치
-        feedback_cb("[11] 접근 위치 이동")
-        self._move_angles(coords['approach'], speed=30, wait=1.5)
+        # do_load() rack scan 파트 종료
+        # ---------------------------------------------------------------------------------
 
-        # [12] Place 위치
-        feedback_cb("[12] Place 위치 이동")
-        self._move_angles(coords['place'], speed=20, wait=1.5)
+        # ---------------------------------------------------------------------------------
+        # do_load() place 파트 시작
+        # Place 작업 전 초기화 위치
+        feedback_cb("Place 작업 전 초기화 위치 이동")
+        self._move_angles(WORK_INIT_ANGLE, speed=30, wait=2.0)
 
-        # [13] 그리퍼 열기 (Place)
-        feedback_cb("[13] 그리퍼 열기 (Place)")
-        self.mc.set_gripper_value(100, 50)
+        # Place 접근 위치
+        feedback_cb("Place 접근 위치 이동")
+        self._move_angles(LOAD_PLACE_COORDS['approach'], speed=30, wait=4.0)
+
+        # Place 위치
+        feedback_cb("Place 위치 이동")
+        self._move_angles(LOAD_PLACE_COORDS['place'], speed=30, wait=2.0)
+
+        # 그리퍼 열기 (Place)
+        feedback_cb("그리퍼 열기 (Place)")
+        self.mc.set_gripper_value(80, 50)
         time.sleep(0.7)
 
-        # [14] 후진
-        feedback_cb("[14] 후진")
-        self._move_angles(coords['retreat'], speed=20, wait=1.5)
-
-        # [15] 홈 복귀
-        feedback_cb("[15] 홈 자세 복귀")
+        # 후진
+        feedback_cb("후진")
+        self._move_angles(LOAD_PLACE_COORDS['retreat'], speed=30, wait=2.0)
+        
+        # 홈 복귀
+        feedback_cb("홈 자세 복귀")
         self.go_home(feedback_cb)
 
+        # 재작업을 위한 카메라 인식 지점 이동
+        feedback_cb("카메라 인식 지점 이동")
+        if node: node._set_detect(False)
+        self._move_angles(LOAD_PICK_COORDS, speed=50, wait=2.0)
+        if node: node._set_detect(True)
+
         feedback_cb("load 완료")
-        logger.info(f"load 동작 완료 → {target_slot}")
+        logger.info(f"load 동작 완료")
+        # do_load() place 파트 종료
+        # ---------------------------------------------------------------------------------
  
-    def do_unload(self, feedback_cb, detected=False, cx=0.0, cy=0.0,
-                  area=0.0, hor=0.0, ver=0.0, ar=0.0,
-                  target_item: str = "물병", node=None):
+    def do_unload(self, feedback_cb, target_item: str = "물병", node=None):
         """
         출고 동작
         ✅ send_angles: 모든 이동 (QR 스캔, Pick, Place, 홈)
         ⚠️  ctrl_moving: 없음 (모두 고정 위치)
         """
-        # [1] 홈 자세 ✅ send_angles
-        feedback_cb("[1] 홈 자세 이동")
-        self.go_home(feedback_cb)
- 
-        # [2~5] 왼쪽 → 오른쪽 QR 스캔 ✅ send_angles
+
+        # QR 스캔/Pick/Place 전체 구간은 process_frame() 검출이 불필요하므로
+        # flask_node의 부하를 줄이기 위해 detect를 꺼둠
+        if node: node._set_detect(False)
+
+        # ---------------------------------------------------------------------------------
+        # do_unload() QR 코드 스캔 파트 시작
+        # 왼쪽 → 오른쪽 QR 스캔 
         found    = None
         position = None
  
         for slot in ['floor2_left', 'floor2_right']:
             label = '왼쪽' if slot == 'floor2_left' else '오른쪽'
-            feedback_cb(f"[2] {label} QR 스캔 위치로 이동")
+            feedback_cb(f"[1] {label} QR 스캔 위치로 이동")
  
-            # ✅ send_angles만 사용
+            # QR 스캔 위치로 이동 (왼쪽 , 오른쪽)
             self._move_angles(QR_SCAN_ANGLES[slot], speed=30, wait=2)
- 
+            # 이동 명령은 그대로 보내되, 이동하는 동안에도 주기적으로
+            # 현재 카메라 프레임을 디버그 화면으로 publish
+            move_start = time.time()
+            while time.time() - move_start < 2.0:
+                frame = node._last_frame if node is not None else None
+                if frame is not None and node:
+                    node.publish_debug_frame(frame)
+                time.sleep(0.3)
+
             for i in range(3):
-                feedback_cb(f"[3] {label} QR 스캔 중... ({i+1}/3)")
+                feedback_cb(f"[2] {label} QR 스캔 중... ({i+1}/3)")
                 frame = node._last_frame if node is not None else None
  
                 if frame is None:
@@ -322,177 +410,154 @@ class RobotController:
                     time.sleep(1)
                     continue
  
-                result = scan_qr(frame)
- 
-                if result and result.get('item') == target_item:
+                # scan_qr 사용
+                result = scan_qr(frame, target_item=target_item, max_angle_deg=45.0, debug=False)
+
+                # Flask 화면에 QR 디버그 시각화 표시
+                debug_frame, _ = draw_qr_debug(frame, target_item=target_item, max_angle_deg=45.0)
+                if node: node.publish_debug_frame(debug_frame)
+
+                if result:
                     found    = result
                     position = slot
+
                     feedback_cb(
                         f"QR 감지 성공! box_id={result['box_id']}, "
-                        f"item={result['item']}, position={position}"
+                        f"item={result['item']}, position={position}, "
+                        f"거리={result.get('distance_cm', '?')}cm "
+                        f"({'정상' if result.get('in_range') else '거리 주의'})"
                     )
                     break
                 else:
-                    if result:
-                        feedback_cb(f"다른 박스: {result.get('item')} → {target_item} 찾는 중")
-                    else:
-                        feedback_cb(f"QR 미감지 → 재시도 {i+1}/3")
+                    feedback_cb(f"QR 미감지 → 재시도 {i+1}/3")
                     time.sleep(1)
- 
+
             if found:
                 break
- 
+        
         if found is None:
             feedback_cb(f"'{target_item}' 박스를 찾지 못함 → 중단")
+            if node: node.clear_debug_frame()
+            self.go_home(feedback_cb)
+            return
+        
+        time.sleep(1.0) # 결과를 화면에서 더 보여줌
+
+        # QR 스캔 파트 끝나면
+        if node: node.clear_debug_frame()
+
+        # do_unload() QR 코드 스캔 파트 종료
+        # --------------------------------------------------------------------------------
+
+        # --------------------------------------------------------------------------------
+        # do_unload() 운반대 pick 파트 시작
+        # Pick 작업 전 초기화 위치
+        feedback_cb("Pick 작업 전 초기화 위치 이동")
+        self._move_angles(WORK_INIT_ANGLE, speed=30, wait=2.0)
+
+        # Pick 접근 위치
+        feedback_cb("Pick 접근 위치 이동")
+        self._move_angles(UNLOAD_PICK_COORDS['approach'], speed=30, wait=4.0)
+ 
+        # Pick 위치
+        feedback_cb("Pick 위치 이동")
+        self._move_angles(UNLOAD_PICK_COORDS['pick'], speed=30, wait=2.0)
+ 
+        # 그리퍼 닫기 (Pick)
+        feedback_cb("그리퍼 닫기 (Pick)")
+        self.mc.set_gripper_value(0, 50)
+        time.sleep(0.7)
+
+        # Pick 성공 여부 확인 추가
+        if not self.check_gripper_grasp(feedback_cb, empty_threshold=10, max_retry=2):
+            feedback_cb("Pick 실패 → 동작 중단")
+            if node: node._set_detect(True)
             self.go_home(feedback_cb)
             return
  
-        pick_coords = UNLOAD_PICK_COORDS[position]
-        feedback_cb(f"'{target_item}' 박스 위치: {position}")
+        # 후진
+        feedback_cb("후진")
+        self._move_angles(UNLOAD_PICK_COORDS['retreat'], speed=30, wait=2.0)
+
+        # do_unload() 운반대 pick 파트 종료
+        # --------------------------------------------------------------------------------
+
+        # --------------------------------------------------------------------------------
+        # do_unload() 운반대 place 파트 시작
+        # Place 작업 전 초기화 위치
+        feedback_cb("Place 작업 전 초기화 위치 이동")
+        self._move_angles(WORK_INIT_ANGLE, speed=30, wait=2.0)
+
+        # 운반대 접근 위치
+        feedback_cb("운반대 접근 위치로 이동")
+        self._move_angles(CART_PLACE_COORDS['approach'], speed=30, wait=2.0)
  
-        # [7] Pick 접근 ✅ send_angles
-        feedback_cb("[7] Pick 접근 위치 이동")
-        self._move_angles(pick_coords['approach'], speed=30, wait=1.5)
- 
-        # [8] Pick 위치 ✅ send_angles
-        feedback_cb("[8] Pick 위치 이동")
-        self._move_angles(pick_coords['pick'], speed=20, wait=1.5)
- 
-        # 그리퍼 열기
-        feedback_cb("[8-1] 그리퍼 열기")
-        self.mc.set_gripper_value(100, 50)
-        time.sleep(0.5)
- 
-        # 그리퍼 닫기 (Pick)
-        feedback_cb("[8-2] 그리퍼 닫기 (Pick)")
-        self.mc.set_gripper_value(0, 50)
-        time.sleep(0.7)
- 
-        # [9] 후진 ✅ send_angles
-        feedback_cb("[9] 후진")
-        self._move_angles(pick_coords['retreat'], speed=20, wait=1.5)
- 
-        # [10] 운반대 접근 ✅ send_angles
-        feedback_cb("[10] 운반대 접근 위치로 이동")
-        self._move_angles(CART_PLACE_COORDS['approach'], speed=30, wait=1.5)
- 
-        # [11] 운반대 Place 위치 ✅ send_angles
-        feedback_cb("[11] 운반대 Place 위치로 이동")
-        self._move_angles(CART_PLACE_COORDS['place'], speed=20, wait=1.5)
+        # 운반대 Place 위치 
+        feedback_cb("운반대 Place 위치로 이동")
+        self._move_angles(CART_PLACE_COORDS['place'], speed=30, wait=2.0)
  
         # 그리퍼 열기 (Place)
-        feedback_cb("[11-1] 그리퍼 열기 (Place)")
+        feedback_cb("그리퍼 열기 (Place)")
         self.mc.set_gripper_value(100, 50)
         time.sleep(0.7)
  
-        # [12] 상승 ✅ send_angles
-        feedback_cb("[12] 상승")
-        self._move_angles(CART_PLACE_COORDS['up'], speed=20, wait=1.5)
+        # 상승
+        feedback_cb("상승")
+        self._move_angles(CART_PLACE_COORDS['up'], speed=30, wait=2.0)
  
-        # [13] 홈 복귀 ✅ send_angles
-        feedback_cb("[13] 홈 자세 복귀")
+        if node: node._set_detect(True) # 정상 종료 
+        
+        # 홈 복귀
+        feedback_cb("홈 자세 복귀")
         self.go_home(feedback_cb)
  
         feedback_cb("unload 완료")
-        logger.info(f"unload 동작 완료 → {target_item} ({position})")
+        logger.info(f"unload 동작 완료 → {target_item}")
+        # do_unload() 운반대 place 파트 종료
+        # --------------------------------------------------------------------------------
     
-    def outbound_pickup(self, feedback_cb, detected=False, cx=0.0, cy=0.0,
-                    area=0.0, hor=0.0, ver=0.0, ar=0.0):
+    def outbound_place(self, feedback_cb, node=None):
         """
-        출고 컨베이어 시나리오
+        출고 작업
         운반대에 실린 박스 → 컨베이어 벨트로 Pick & Place
-        1.  홈 자세
-        2.  카메라 인식 지점으로 이동 (운반대 위)
-        3.  박스 감지 확인
-        4.  Pick 접근 위치로 이동
-        5.  그리퍼 열기
-        6.  Pick 위치로 하강
-        7.  그리퍼 닫기 (Pick)
-        8.  상승 (후진)
-        9.  컨베이어 접근 위치로 이동
-        10. 컨베이어 Place 위치로 이동
-        11. 그리퍼 열기 (Place)
-        12. 상승
-        13. 홈 복귀
         """
+        
+        if node: node._set_detect(False)
+        
+        # Pick 작업 전 초기화 위치
+        feedback_cb("Pick 작업 전 초기화 위치 이동")
+        self._move_angles(OUT_WORK_INIT_ANGLE, speed=30, wait=2.0)
 
-        # [1] 홈 자세
-        feedback_cb("[1] 홈 자세 이동")
-        self.go_home(feedback_cb)
-
-        # [2] 카메라 인식 지점으로 이동 ✅ send_angles
-        feedback_cb("[2] 카메라 인식 지점 이동")
-        self._move_angles(OUTBOUND_CAM_ANGLES, speed=50, wait=2)
-
-        # [3] 박스 감지 확인
-        feedback_cb("[3-1] 박스 감지 확인")
-        time.sleep(1)
-        feedback_cb(f"[3-2] 박스 감지 → cx={cx:.1f}, cy={cy:.1f}, area={area:.0f}")
-
-        if not detected:
-            feedback_cb("박스 미감지 → 픽업 중단")
-            self.go_home(feedback_cb)
-            return
-
-        # [4] cx, cy 기반 Pick 좌표 보정
-        feedback_cb("[4] 박스 위치 보정 계산")
-
-        CENTER_X    = 320
-        CENTER_Y    = 240
-        PIXEL_TO_MM = 0.5  # ← 캘리브레이션 필요
-
-        error_x = cx - CENTER_X
-        error_y = cy - CENTER_Y
-
-        feedback_cb(
-            f"[4] 보정값 → error_x={error_x:.1f}px, error_y={error_y:.1f}px"
-        )
-
-        # [5] Pick 접근 위치로 이동 ✅ send_angles
-        feedback_cb("[5] Pick 접근 위치 이동")
-        self._move_angles(OUTBOUND_PICK_COORDS['approach'], speed=30, wait=1.5)
-
-        # [6] Pick 위치로 이동 ✅ send_angles
-        feedback_cb("[6] Pick 위치 이동")
-        self._move_angles(OUTBOUND_PICK_COORDS['pick'], speed=20, wait=1.5)
-
-        # [7] 그리퍼 열기
-        feedback_cb("[7] 그리퍼 열기")
-        self.mc.set_gripper_value(100, 50)
-        time.sleep(0.5)
-
-        # [8] 그리퍼 닫기 (Pick)
-        feedback_cb("[8] 그리퍼 닫기 (Pick)")
+        # 그리퍼 닫기 (Pick)
         self.mc.set_gripper_value(0, 50)
         time.sleep(0.7)
 
-        # [9] 후진 ✅ send_angles
-        feedback_cb("[9] 후진")
-        self._move_angles(OUTBOUND_PICK_COORDS['retreat'], speed=20, wait=1.5)
+        # Pick 한 상태
+        feedback_cb("Pick한 상태 확인")
+        time.sleep(0.7)
 
-        # [10] 컨베이어 접근 위치로 이동 ✅ send_angles
-        feedback_cb("[10] 컨베이어 접근 위치로 이동")
-        self._move_angles(CONVEYOR_PLACE_COORDS['approach'], speed=30, wait=1.5)
+        # 컨베이어 Place 위치로 이동 
+        feedback_cb("컨베이어 Place 위치로 이동")
+        self._move_angles(CONVEYOR_PLACE_COORDS['place'], speed=30, wait=2.0)
 
-        # [11] 컨베이어 Place 위치로 이동 ✅ send_angles
-        feedback_cb("[11] 컨베이어 Place 위치로 이동")
-        self._move_angles(CONVEYOR_PLACE_COORDS['place'], speed=20, wait=1.5)
-
-        # [12] 그리퍼 열기 (Place)
-        feedback_cb("[12] 그리퍼 열기 (Place)")
+        # 그리퍼 열기 (Place)
+        feedback_cb("그리퍼 열기 (Place)")
         self.mc.set_gripper_value(100, 50)
         time.sleep(0.7)
 
-        # [13] 상승 ✅ send_angles
-        feedback_cb("[13] 상승")
-        self._move_angles(CONVEYOR_PLACE_COORDS['up'], speed=20, wait=1.5)
+        # 상승 
+        feedback_cb("상승")
+        self._move_angles(CONVEYOR_PLACE_COORDS['up'], speed=30, wait=2.0)
 
-        # [14] 홈 복귀 ✅ send_angles
-        feedback_cb("[14] 홈 자세 복귀")
-        self.go_home(feedback_cb)
+        if node: node._set_detect(True)
+        
+        # 홈 복귀 
+        feedback_cb("홈 자세 복귀")
+        self._move_angles(OUT_WORK_INIT_ANGLE, speed=30, wait=2.0)
+        # self.go_home(feedback_cb)
 
-        feedback_cb("outbound_pickup 완료")
-        logger.info("outbound_pickup 동작 완료")
+        feedback_cb("outbound_place 완료")
+        logger.info("outbound_place 동작 완료")
  
  
 class JetCobot2ActionServer(Node):
@@ -502,6 +567,11 @@ class JetCobot2ActionServer(Node):
         self._last_frame = None
  
         self.robot = RobotController()
+
+        # 디버그 프레임 발행자 추가
+        self._debug_stream_pub       = self.create_publisher(Image, 'debug_stream', 10)
+        self._debug_stream_clear_pub = self.create_publisher(Empty, 'debug_stream_clear', 10)
+
  
         self._action_server = ActionServer(
             self,
@@ -512,11 +582,27 @@ class JetCobot2ActionServer(Node):
             cancel_callback=self.cancel_callback,
             callback_group=ReentrantCallbackGroup()
         )
- 
+
         self.create_subscription(Image,  'camera/image',   self._camera_callback, 10)
-        self.create_subscription(String, '/manual_command', self._manual_cb,       10)
+        self.create_subscription(String, 'manual_command', self._manual_cb,      10)
+
+        # ✅ 감지 허용 신호 발행자 추가
+        self._detect_enable_pub = self.create_publisher(Bool, 'detect_enable', 10)
         self.get_logger().info("액션 서버 시작: jetcobot2/command")
- 
+
+        def fb(m): logger.info(f"[init] {m}")
+        self.get_logger().info("초기화: 홈 자세 이동")
+        self.robot.go_home(fb)
+    
+    def publish_debug_frame(self, frame):
+        """디버그 시각화 프레임을 /debug_stream 토픽으로 발행 (flask_node가 구독)"""
+        msg = self._bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+        self._debug_stream_pub.publish(msg)
+
+    def clear_debug_frame(self):
+        """/debug_stream_clear 토픽으로 override 해제 신호 발행"""
+        self._debug_stream_clear_pub.publish(Empty())
+
     def _camera_callback(self, msg):
         self._last_frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
  
@@ -524,13 +610,22 @@ class JetCobot2ActionServer(Node):
         action_type = msg.data
         self.get_logger().info(f"수동 명령 수신: {action_type}")
         def fb(m): logger.info(f"[manual] {m}")
+
+        self.robot.go_home(fb)
+
         if action_type == "do_load":
-            self.robot.do_load(fb)
+           self.robot.do_load(fb, node=self)
         elif action_type == "do_unload":
-            self.robot.do_unload(fb)
-        elif action_type == "outbound_pickup":
-            self.robot.outbound_pickup(fb)
- 
+            self.robot.do_unload(fb, node=self)
+        elif action_type == "outbound_place":
+            self.robot.outbound_place(fb, node=self)
+
+    def _set_detect(self, enable: bool):
+        """감지 허용/금지 신호 발행"""
+        msg      = Bool()
+        msg.data = enable
+        self._detect_enable_pub.publish(msg)
+
     def goal_callback(self, goal_request):
         self.get_logger().info(
             f"Goal 수신 → action_type={goal_request.action_type}, "
@@ -559,13 +654,6 @@ class JetCobot2ActionServer(Node):
             self.get_logger().info(f"[{task_id}] Feedback: {status}")
  
         result      = RobotCommand.Result()
-        detected    = parameters.get("detected",    False)
-        result_cx   = parameters.get("result_cx",   0.0)
-        result_cy   = parameters.get("result_cy",   0.0)
-        result_area = parameters.get("result_area", 0.0)
-        result_hor  = parameters.get("result_hor",  0.0)
-        result_ver  = parameters.get("result_ver",  0.0)
-        result_ar   = parameters.get("result_ar",   0.0)
  
         try:
             if goal_handle.is_cancel_requested:
@@ -575,27 +663,15 @@ class JetCobot2ActionServer(Node):
                 return result
  
             if action_type == "do_load":
-                self.robot.do_load(
-                    send_feedback, detected,
-                    result_cx, result_cy, result_area,
-                    result_hor, result_ver, result_ar,
-                    node=self
-                )
+                self.robot.do_load(send_feedback, node=self)
+
             elif action_type == "do_unload":
                 target_item = parameters.get("target_item", "물병")
-                self.robot.do_unload(
-                    send_feedback, detected,
-                    result_cx, result_cy, result_area,
-                    result_hor, result_ver, result_ar,
-                    target_item=target_item,
-                    node=self
-                )
-            elif action_type == "outbound_pickup": 
-                self.robot.outbound_pickup(
-                    send_feedback, detected,
-                    result_cx, result_cy, result_area,
-                    result_hor, result_ver, result_ar
-                )
+                self.robot.do_unload(send_feedback, target_item=target_item, node=self)
+
+            elif action_type == "outbound_place": 
+                self.robot.outbound_place(send_feedback, node=self)
+
             else:
                 self.get_logger().warning(f"[{task_id}] 알 수 없는 action_type: {action_type}")
                 result.event   = "error"
