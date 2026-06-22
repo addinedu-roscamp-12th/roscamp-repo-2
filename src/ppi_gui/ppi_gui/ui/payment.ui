@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>BBI Share(Payment) - User</string>
+   <string>PPI Share(Payment) - User</string>
   </property>
   <property name="styleSheet">
    <string notr="true">QDialog {
@@ -45,7 +45,7 @@
 }</string>
         </property>
         <property name="text">
-         <string>BBI Share</string>
+         <string>PPI Share</string>
         </property>
        </widget>
       </item>

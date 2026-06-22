@@ -1,7 +1,7 @@
 import os
 import rclpy
 from PyQt5.QtWidgets import QDialog, QMessageBox
-from PyQt5.QtCore import QTimer, pyqtSignal, Qt
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 from PyQt5 import uic
  

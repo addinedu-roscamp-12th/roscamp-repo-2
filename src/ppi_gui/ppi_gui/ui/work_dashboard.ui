@@ -14,7 +14,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>BBI Share(Work Dashboard) - Admin</string>
+   <string>PPI Share(Work Dashboard) - Admin</string>
   </property>
   <property name="styleSheet">
    <string notr="true">background-color: #161b22;</string>
@@ -83,7 +83,7 @@ QLabel#label_logo {
           <enum>Qt::LeftToRight</enum>
          </property>
          <property name="text">
-          <string>BBI Share</string>
+          <string>PPI Share</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>

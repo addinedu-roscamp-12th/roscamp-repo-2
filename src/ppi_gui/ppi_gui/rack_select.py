@@ -1,8 +1,6 @@
 import os
 import rclpy
-from PyQt5.QtWidgets import (QDialog, QWidget, QPushButton, 
-                              QGridLayout, QVBoxLayout, QLabel,
-                              QSizePolicy, QMessageBox)
+from PyQt5.QtWidgets import QDialog, QPushButton, QGridLayout, QLabel, QMessageBox
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter
 from PyQt5 import uic
@@ -26,7 +24,7 @@ except ImportError:
 def get_ui_path(filename):
     if ROS2_AVAILABLE:
         return os.path.join(
-            get_package_share_directory('bbi_gui'),
+            get_package_share_directory('ppi_gui'),
             'ui', filename
         )
     else:
@@ -244,7 +242,7 @@ class RackDialog(QDialog):
             return
 
         try:
-            from bbi_gui.payment import PaymentDialog
+            from ppi_gui.payment import PaymentDialog
             payment = PaymentDialog(self.node, self.user_info, self.selected_rack, self)
             if payment.exec_() == QDialog.Accepted:
                 self.accept()

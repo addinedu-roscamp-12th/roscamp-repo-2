@@ -6,8 +6,8 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QDialog, QMessageBox, QHe
 from PyQt5.QtCore import QTimer, pyqtSignal, Qt
 from PyQt5 import uic
 from PyQt5.QtGui import QColor, QImage, QPixmap
-from bbi_gui.rack_select import RackDialog
-from bbi_gui.work_request import WorkRequestDialog
+from ppi_gui.rack_select import RackDialog
+from ppi_gui.work_request import WorkRequestDialog
 
 # ROS2 사용 가능 여부 확인
 try:
@@ -31,7 +31,7 @@ def get_ui_path(filename):
     """UI 파일 경로 반환"""
     if ROS2_AVAILABLE:
         return os.path.join(
-            get_package_share_directory('bbi_gui'),
+            get_package_share_directory('ppi_gui'),
             'ui', filename
         )
     else:
@@ -240,7 +240,7 @@ class AdminWindow(QMainWindow):
 
         # 카메라 스레드 시작
         try:
-            from bbi_gui.camera_thread import CameraThread
+            from ppi_gui.camera_thread import CameraThread
             self.camera_thread = CameraThread('192.168.1.65', 9000)
             self.camera_thread.frame_received.connect(self.update_frame)
             self.camera_thread.start()

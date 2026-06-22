@@ -1,9 +1,9 @@
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from PyQt5.QtWidgets import QDialog, QMessageBox
-from PyQt5.QtCore import QTimer, pyqtSignal
+from PyQt5.QtCore import pyqtSignal
 from PyQt5 import uic
 
 try:
@@ -22,7 +22,7 @@ except ImportError:
 def get_ui_path(filename):
     if ROS2_AVAILABLE:
         return os.path.join(
-            get_package_share_directory('bbi_gui'),
+            get_package_share_directory('ppi_gui'),
             'ui', filename
         )
     else:
@@ -193,7 +193,7 @@ class PaymentDialog(QDialog):
         print(f"[결제 완료] {name} / {rack_id} / {period}개월 / {amount:,}원")
         
         # 5. 작업 요청 화면으로 전환
-        from bbi_gui.work_request import WorkRequestDialog
+        from ppi_gui.work_request import WorkRequestDialog
         work = WorkRequestDialog(self.node, self.user_info, self.rack_info, self)
         work.exec_()
         self.accept()
