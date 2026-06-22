@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>BBI Share(Login)</string>
+   <string>PPI Share(Login)</string>
   </property>
   <property name="styleSheet">
    <string notr="true">QDialog {
@@ -79,7 +79,7 @@
 }</string>
         </property>
         <property name="text">
-         <string>BBI Share</string>
+         <string>PPI Share</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignCenter</set>
