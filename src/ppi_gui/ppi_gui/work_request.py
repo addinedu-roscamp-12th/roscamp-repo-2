@@ -22,7 +22,7 @@ except ImportError:
 def get_ui_path(filename):
     if ROS2_AVAILABLE:
         return os.path.join(
-            get_package_share_directory('bbi_gui'),
+            get_package_share_directory('ppi_gui'),
             'ui', filename
         )
     else:
@@ -32,7 +32,7 @@ def get_ui_path(filename):
 def get_image_path(filename):
     if ROS2_AVAILABLE:
         return os.path.join(
-            get_package_share_directory('bbi_gui'),
+            get_package_share_directory('ppi_gui'),
             'images', filename
         )
     else:
