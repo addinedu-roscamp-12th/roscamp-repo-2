@@ -236,7 +236,7 @@ class AdminWindow(QMainWindow):
     def __init__(self, node=None):
         super().__init__()
         self.node = node
-        uic.loadUi(get_ui_path('Work_Dashboard.ui'), self)
+        uic.loadUi(get_ui_path('work_dashboard.ui'), self)
 
         # 카메라 스레드 시작
         try:
