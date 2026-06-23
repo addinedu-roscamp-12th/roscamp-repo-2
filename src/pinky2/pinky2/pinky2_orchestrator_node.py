@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import threading
 
 import rclpy
@@ -8,9 +9,9 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import Bool
 
-from ppibigi_interfaces.action import RobotCommand
+from msgs.action import RobotCommand
 
-ACTION_NAME = '/command'   # task_manager와 합의 후 변경 가능
+ACTION_NAME = 'pinky2/command'   # task_manager와 합의 후 변경 가능
 EXPECTED_ACTION_TYPE = 'navigate'  # task_manager와 합의 후 변경 가능
 WAIT_POLL_SEC = 1.0
 
@@ -22,19 +23,12 @@ class ParkingOrchestratorNode(Node):
         cb_group = ReentrantCallbackGroup()
 
         self.exit_start_pub = self.create_publisher(Bool, 'pinky2/parking/exit_start', 10)
-        self.auto_start_pub = self.create_publisher(Bool, 'pinky2/parking/auto_start', 10)
 
         self._exit_done_event = threading.Event()
         self._exit_done_success = False
-        self._auto_done_event = threading.Event()
-        self._auto_done_success = False
 
         self.create_subscription(
             Bool, 'pinky2/parking/exit_done', self._exit_done_callback, 10,
-            callback_group=cb_group,
-        )
-        self.create_subscription(
-            Bool, 'pinky2/parking/auto_done', self._auto_done_callback, 10,
             callback_group=cb_group,
         )
 
@@ -50,14 +44,10 @@ class ParkingOrchestratorNode(Node):
         self._exit_done_success = msg.data
         self._exit_done_event.set()
 
-    def _auto_done_callback(self, msg: Bool):
-        self._auto_done_success = msg.data
-        self._auto_done_event.set()
-
     def _execute_callback(self, goal_handle):
         goal = goal_handle.request
         self.get_logger().info(
-            f'액션 골 수신: action_type={goal.action_type}, task_id={goal.task_id}'
+            f'액션 골 수신: action_type={goal.action_type}, params={goal.parameters_json}'
         )
 
         result = RobotCommand.Result()
@@ -69,7 +59,25 @@ class ParkingOrchestratorNode(Node):
             result.message = f'지원하지 않는 action_type: {goal.action_type}'
             return result
 
-        # 1단계: 탈출 시퀀스
+        try:
+            params = json.loads(goal.parameters_json)
+        except json.JSONDecodeError:
+            goal_handle.abort()
+            result.event = 'invalid_params'
+            result.message = 'parameters_json 파싱 실패'
+            return result
+
+        location = params.get('location', '')
+
+        if location == 'load_wait_2':
+            return self._run_exit_sequence(goal_handle, result)
+        else:
+            goal_handle.abort()
+            result.event = 'unknown_location'
+            result.message = f'알 수 없는 location: {location}'
+            return result
+
+    def _run_exit_sequence(self, goal_handle, result):
         self._exit_done_event.clear()
         self.get_logger().info('탈출 시퀀스 시작 신호 전송.')
         self.exit_start_pub.publish(Bool(data=True))
@@ -85,25 +93,9 @@ class ParkingOrchestratorNode(Node):
             result.message = '탈출 시퀀스 실패'
             return result
 
-        # 2단계: 주차 진입 시퀀스
-        self._auto_done_event.clear()
-        self.get_logger().info('주차 진입 시퀀스 시작 신호 전송.')
-        self.auto_start_pub.publish(Bool(data=True))
-        self._publish_feedback(goal_handle, '주차 진입 시퀀스 진행 중')
-
-        while not self._auto_done_event.wait(timeout=WAIT_POLL_SEC):
-            self._publish_feedback(goal_handle, '주차 진입 시퀀스 진행 중')
-
-        if not self._auto_done_success:
-            self.get_logger().error('주차 진입 시퀀스 실패.')
-            goal_handle.abort()
-            result.event = 'auto_failed'
-            result.message = '주차 진입 시퀀스 실패'
-            return result
-
         goal_handle.succeed()
         result.event = 'success'
-        result.message = '탈출 및 재주차 시퀀스 완료'
+        result.message = '탈출 시퀀스 완료'
         return result
 
     def _publish_feedback(self, goal_handle, status: str):
