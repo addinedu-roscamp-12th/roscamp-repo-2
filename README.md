@@ -40,14 +40,14 @@
 
 <!-- 팀원 이름, 역할, GitHub 링크 등을 작성해주세요 -->
 
-| 이름 | 역할 | GitHub |
+| 이름 | 역할 | 작업 | GitHub |
 |------|------|--------|
-| 채윤재 | 역할 설명 | [@username](https://github.com/username) |
-| 김성은 | 역할 설명 | [@username](https://github.com/username) |
-| 방석진 | 역할 설명 | [@username](https://github.com/username) |
-| 서동찬 | 역할 설명 | [@username](https://github.com/username) |
-| 이태경 | 역할 설명 | [@username](https://github.com/username) |
-| 정창현 | 역할 설명 | [@username](https://github.com/username) |
+| 채윤재 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
+| 김성은 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
+| 방석진 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
+| 서동찬 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
+| 이태경 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
+| 정창현 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
 
 <br>
 
