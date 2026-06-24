@@ -41,7 +41,7 @@
 <!-- 팀원 이름, 역할, GitHub 링크 등을 작성해주세요 -->
 
 | 이름 | 역할 | 작업 | GitHub |
-|------|------|--------|
+|------|------|---------------|--------|
 | 채윤재 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
 | 김성은 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
 | 방석진 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
