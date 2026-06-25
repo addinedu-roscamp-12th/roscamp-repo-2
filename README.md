@@ -40,14 +40,54 @@
 
 <!-- 팀원 이름, 역할, GitHub 링크 등을 작성해주세요 -->
 
-| 이름 | 역할 | 작업 | GitHub |
-|------|------|---------------|--------|
-| 채윤재 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
-| 김성은 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
-| 방석진 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
-| 서동찬 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
-| 이태경 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
-| 정창현 | 역할 | 작업 내용 나열 | [@username](https://github.com/username) |
+<table>
+  <thead>
+    <tr>
+      <th width="80" style="text-align:center">이름</th>
+      <th width="80" style="text-align:center">역할</th>
+      <th width="350" style="text-align:center">작업</th>
+      <th width="80" style="text-align:center">GitHub</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center">채윤재</td>
+      <td align="center">팀장</td>
+      <td>프로젝트 설계(UR·SR 등)<br>설계 문서 취합 및 정리<br>사용자 및 관리자 GUI 개발<br>운송 Manipulator 기능 구현(랙 공간 탐색, QR 코드 인식)</td>
+      <td align="center"><a href="https://github.com/GroovyCat">@GroovyCat</a></td>
+    </tr>
+    <tr>
+      <td align="center">김성은</td>
+      <td align="center">팀원</td>
+      <td>작업 내용 나열</td>
+      <td align="center"><a href="#">@username</a></td>
+    </tr>
+    <tr>
+      <td align="center">방석진</td>
+      <td align="center">팀원</td>
+      <td>작업 내용 나열</td>
+      <td align="center"><a href="#">@username</a></td>
+    </tr>
+    <tr>
+      <td align="center">서동찬</td>
+      <td align="center">팀원</td>
+      <td>작업 내용 나열</td>
+      <td align="center"><a href="#">@username</a></td>
+    </tr>
+    <tr>
+      <td align="center">이태경</td>
+      <td align="center">팀원</td>
+      <td>작업 내용 나열</td>
+      <td align="center"><a href="#">@username</a></td>
+    </tr>
+    <tr>
+      <td align="center">정창현</td>
+      <td align="center">팀원</td>
+      <td>작업 내용 나열</td>
+      <td align="center"><a href="#">@username</a></td>
+    </tr>
+  </tbody>
+</table>
 
 <br>
 
@@ -68,11 +108,13 @@
 
 ## 🎬 System Scenario
 
-<!-- 시스템 시나리오 다이어그램 또는 설명을 작성해주세요 -->
+<!-- 시스템 시나리오 다이어그램을 삽입해주세요 -->
 
 ```
 추후 작성 예정
 ```
+
+<!-- 예시: ![Architecture](docs/images/Scenario.png) -->
 
 <br>
 
@@ -80,11 +122,7 @@
 
 <!-- 시스템 아키텍처 다이어그램을 삽입해주세요 -->
 
-```
-추후 작성 예정
-```
-
-<!-- 예시: ![Architecture](docs/images/architecture.png) -->
+<img src="docs/images/architecture.png" width="700"/>
 
 <br>
 
@@ -94,19 +132,37 @@
 
 ### 사용자 화면
 
-| 화면명 | 스크린샷 |
-|--------|----------|
-| 로그인 | 추후 추가 |
-| 입고 신청 | 추후 추가 |
-| 출고 신청 | 추후 추가 |
+**공유 랙 선택**
+
+
+<img src="docs/images/user_rack_select.png" width="600"/>
+
+**공유 랙 결제**
+
+
+<img src="docs/images/user_payment.png" width="600"/>
+
+**입·출고 작업 요청**
+
+
+<img src="docs/images/user_inout.png" width="600"/>
 
 ### 관리자 화면
 
-| 화면명 | 스크린샷 |
-|--------|----------|
-| 대시보드 | 추후 추가 |
-| 랙 관리 | 추후 추가 |
-| 사용자 관리 | 추후 추가 |
+**대시보드**
+
+
+<img src="docs/images/admin_dashboard.png" width="600"/>
+
+**랙 관리**
+
+
+<img src="docs/images/admin_rack.png" width="600"/>
+
+**사용자 관리**
+
+
+<img src="docs/images/admin_user.png" width="600"/>
 
 <br>
 
