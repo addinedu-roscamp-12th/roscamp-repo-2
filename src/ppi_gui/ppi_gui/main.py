@@ -2,10 +2,10 @@ import sys
 import os
 import cv2
 from datetime import datetime
-from PyQt5.QtWidgets import QApplication, QMainWindow, QDialog, QMessageBox, QHeaderView, QTableWidgetItem, QListWidgetItem
-from PyQt5.QtCore import QTimer, pyqtSignal, Qt
+from PyQt5.QtWidgets import QApplication, QMainWindow, QDialog, QMessageBox, QHeaderView, QTableWidgetItem, QListWidgetItem, QPushButton, QVBoxLayout, QHBoxLayout, QLabel
+from PyQt5.QtCore import QTimer, pyqtSignal, Qt, QSize
 from PyQt5 import uic
-from PyQt5.QtGui import QColor, QImage, QPixmap
+from PyQt5.QtGui import QColor, QImage, QPixmap, QIcon
 from ppi_gui.rack_select import RackDialog
 from ppi_gui.work_request import WorkRequestDialog
 
@@ -36,6 +36,16 @@ def get_ui_path(filename):
         )
     else:
         return os.path.join(os.path.dirname(__file__), 'ui', filename)
+    
+def get_image_path(filename):
+    """이미지 파일 경로 반환"""
+    if ROS2_AVAILABLE:
+        return os.path.join(
+            get_package_share_directory('ppi_gui'),
+            'images', filename
+        )
+    else:
+        return os.path.join(os.path.dirname(__file__), 'images', filename)
 
 
 def generate_user_id(last_user_id):
@@ -225,6 +235,75 @@ class LoginDialog(QDialog):
         register_dialog = RegisterDialog(self.node, self)
         register_dialog.exec_()
 
+class VoiceCommandDialog(QDialog):
+    def __init__(self, robot_id, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f'음성 명령 - {robot_id}')
+        self.setFixedSize(400, 300)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #0d1117;
+            }
+            QLabel {
+                color: white;
+            }
+            QPushButton {
+                background-color: transparent;
+                color: #f85149;
+                border: 1px solid #f85149;
+                border-radius: 4px;
+                font-size: 13px;
+                padding: 6px 20px;
+            }
+            QPushButton:hover {
+                background-color: #3d1a1a;
+            }
+        """)
+
+        layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(20)
+
+        # 로봇 ID 라벨
+        label_robot = QLabel(f'🤖 {robot_id}')
+        label_robot.setAlignment(Qt.AlignCenter)
+        label_robot.setStyleSheet('font-size: 16px; font-weight: bold; color: white;')
+
+        # 마이크 이미지
+        label_mic = QLabel()
+        label_mic.setAlignment(Qt.AlignCenter)
+        mic_pixmap = QPixmap(get_image_path('whisper.png'))
+        label_mic.setPixmap(
+            mic_pixmap.scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        )
+
+        mic_path = get_image_path('whisper.png')
+        print(f"[이미지 경로] {mic_path}")
+        mic_pixmap = QPixmap(mic_path)
+        print(f"[Pixmap 유효] {not mic_pixmap.isNull()}")
+
+        # 안내 문구
+        label_guide = QLabel('명령을 말씀해주세요.')
+        label_guide.setAlignment(Qt.AlignCenter)
+        label_guide.setStyleSheet('font-size: 14px; color: #8b949e;')
+
+        # 취소 버튼
+        btn_cancel = QPushButton('취소')
+        btn_cancel.clicked.connect(self.close)
+
+        # 하단 버튼 레이아웃
+        bottom_layout = QHBoxLayout()
+        bottom_layout.addStretch()
+        bottom_layout.addWidget(btn_cancel)
+        bottom_layout.addStretch()
+
+        layout.addWidget(label_robot)
+        layout.addWidget(label_mic)
+        layout.addWidget(label_guide)
+        layout.addLayout(bottom_layout)
+
+        self.setLayout(layout)
+
 
 class AdminWindow(QMainWindow):
     rack_data_signal = pyqtSignal(list)
@@ -306,6 +385,9 @@ class AdminWindow(QMainWindow):
         """robot_table 채우기"""
         self.robot_table.setRowCount(len(robot_list))
 
+        # 이미지 경로
+        stop_img_path = get_image_path('stop.png')
+
         for row, robot in enumerate(robot_list):
             robot_id = robot.get('robot_id', '-')
             r_type   = robot.get('type', '-')
@@ -340,6 +422,27 @@ class AdminWindow(QMainWindow):
                 battery_item.setForeground(color)
 
             self.robot_table.setItem(row, 4, battery_item)
+
+            # 비상정지 버튼 (STOP 이미지)
+            btn_stop = QPushButton()
+            btn_stop.setIcon(QIcon(QPixmap(stop_img_path)))
+            btn_stop.setIconSize(QSize(30, 30))
+            btn_stop.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    border: none;
+                }
+                QPushButton:hover {
+                    background-color: #3d1a1a;
+                    border-radius: 4px;
+                }
+            """)
+            btn_stop.clicked.connect(lambda checked, rid=robot_id: self._on_stop_clicked(rid))
+            self.robot_table.setCellWidget(row, 5, btn_stop)
+    def _on_stop_clicked(self, robot_id):
+        """비상정지 버튼 클릭 시 음성 명령 창 열기"""
+        dialog = VoiceCommandDialog(robot_id, self)
+        dialog.exec_()
 
     def _setup_rack_table(self):
         header = self.rack_table.horizontalHeader()

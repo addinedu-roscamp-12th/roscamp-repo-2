@@ -5,6 +5,7 @@ from dateutil.relativedelta import relativedelta
 from PyQt5.QtWidgets import QDialog, QMessageBox
 from PyQt5.QtCore import pyqtSignal
 from PyQt5 import uic
+from ppi_gui.work_request import WorkRequestDialog
 
 try:
     import rclpy
@@ -180,9 +181,10 @@ class PaymentDialog(QDialog):
         expired_at = data['expired_at']
         amount     = data['amount']
 
-        # 4. 결제 완료 메시지
-        QMessageBox.information(
-            self, '결제 완료',
+        # 4. 결제 완료 메시지 (스타일 적용)
+        msg = QMessageBox(self)
+        msg.setWindowTitle('결제 완료')
+        msg.setText(
             f"결제가 완료되었습니다!\n\n"
             f"성명: {name}\n"
             f"랙 위치: {zone}구역 {number}번\n"
@@ -190,10 +192,29 @@ class PaymentDialog(QDialog):
             f"만료일: {expired_at[:10]}\n"
             f"결제 금액: {amount:,}원"
         )
-        print(f"[결제 완료] {name} / {rack_id} / {period}개월 / {amount:,}원")
+        msg.setStyleSheet("""
+            QMessageBox {
+                background-color: #0d1117;
+            }
+            QMessageBox QLabel {
+                color: white;
+                font-size: 14px;
+            }
+            QPushButton {
+                background-color: #1f6feb;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 20px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #388bfd;
+            }
+        """)
+        msg.exec_()
         
         # 5. 작업 요청 화면으로 전환
-        from ppi_gui.work_request import WorkRequestDialog
         work = WorkRequestDialog(self.node, self.user_info, self.rack_info, self)
         work.exec_()
         self.accept()
