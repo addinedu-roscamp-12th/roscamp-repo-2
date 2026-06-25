@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'action_server = jetcobot1.action_server:main',
         ],
     },
 )
