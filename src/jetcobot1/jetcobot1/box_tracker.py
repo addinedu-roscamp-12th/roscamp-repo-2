@@ -11,6 +11,14 @@
   3. 박스 트래킹 시작
 
 action_server.py와 독립적으로 동작하며 import 또는 단독 실행 모두 가능.
+
+리소스 관리 (입고 트리거 연동):
+  - start()       : 백그라운드 감시 스레드만 시작. 카메라는 닫힌 상태 유지.
+  - activate()    : 카메라 오픈 + 프레임 수신/디텍션 시작 (입고 시작 시 호출)
+  - deactivate()  : 카메라 해제, 프레임 수신 중단 (입고 대기/완료 시 호출)
+  - stop()        : 완전 종료 (프로그램 종료 시 호출)
+  대기 상태(입고 시작 누르지 않음)에서는 카메라 시야에 박스가 있어도
+  cap.grab()/cap.read() 자체가 호출되지 않아 CPU/USB 리소스를 쓰지 않는다.
 """
 
 import cv2
@@ -48,6 +56,9 @@ BOX_ASPECT_MIN      = 0.6     # 장변/단변 비율 최솟값 (정사각형 기
 BOX_ASPECT_MAX      = 1.8     # 장변/단변 비율 최댓값
 CENTER_TOLERANCE_PX = 15      # 중심 오차 허용 범위 (px) — 10→15: 관성 오버슈트 방지
 
+# 카메라 비활성 상태일 때 루프 polling 주기 (초)
+INACTIVE_POLL_INTERVAL = 0.1
+
 
 def classify_size(area: float) -> str:
     if area < SIZE_SMALL_MAX:
@@ -80,7 +91,6 @@ class BoxInfo:
         return abs(ex) <= CENTER_TOLERANCE_PX and abs(ey) <= CENTER_TOLERANCE_PX
 
     def __repr__(self):
-        # ★ width 추가: pick_and_place.py 캘리브 시 픽셀 폭 확인용
         w_str = f"{self.width:.1f}px" if self.width is not None else "N/A"
         return (f"BoxInfo(cx={self.cx}, cy={self.cy}, "
                 f"area={self.area:.0f}, width={w_str}, size={self.size})")
@@ -122,11 +132,25 @@ class BoxTracker:
     """
     카메라에서 흰색 박스를 실시간으로 트래킹한다.
 
-    사용 예:
+    사용 예 (상시 동작 - 기존 방식):
         tracker = BoxTracker()
         tracker.start()
+        tracker.activate()
         box = tracker.get_best_box()   # 최신 감지 결과
         tracker.stop()
+
+    사용 예 (입고 트리거 연동 - 리소스 관리):
+        tracker = BoxTracker()
+        tracker.start()              # 감시 스레드만 시작, 카메라는 닫힌 상태
+
+        # 입고 시작(I 키) 시점
+        tracker.activate()           # 카메라 오픈 + 프레임 수신 시작
+        box = tracker.get_best_box()
+
+        # pick & place 완료 후
+        tracker.deactivate()         # 카메라 해제, 프레임 수신 중단 (리소스 절약)
+
+        tracker.stop()               # 프로그램 종료 시
     """
 
     def __init__(self, device: str = "/dev/jetcocam0",
@@ -141,6 +165,11 @@ class BoxTracker:
         self._thread: threading.Thread | None = None
         self._running = False
 
+        # ── 입고 트리거 연동: 카메라 활성 상태 플래그 ──────────────
+        # clear 상태(기본값) = 비활성 = 카메라 닫힘 = 프레임 수신 안 함
+        # set 상태           = 활성   = 카메라 열림 = 프레임 수신 + 디텍션
+        self._active = threading.Event()
+
         self._latest_boxes: list[BoxInfo] = []
         self._latest_blob:  BoxInfo | None  = None   # 형태 무관 최대 흰색 영역
         self._latest_frame: np.ndarray | None = None
@@ -150,32 +179,72 @@ class BoxTracker:
     # ──────────────────────────────────────────
 
     def start(self):
-        """백그라운드 스레드에서 카메라 루프를 시작한다."""
+        """
+        백그라운드 감시 스레드를 시작한다.
+        카메라 디바이스는 activate() 호출 전까지 열리지 않는다.
+        """
         if self._running:
             return
-        self._cap = cv2.VideoCapture(self.device)
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.width)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        self._cap.set(cv2.CAP_PROP_FPS,          self.fps)
-        self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        if not self._cap.isOpened():
-            raise RuntimeError(f"카메라를 열 수 없습니다: {self.device}")
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-        logger.info(f"BoxTracker 시작: {self.device} ({self.width}x{self.height})")
+        logger.info("BoxTracker 감시 스레드 시작 (카메라 비활성 — activate() 호출 전까지 대기)")
+
+    def activate(self):
+        """
+        입고 트리거 ON 시 호출.
+        카메라 디바이스를 열고 프레임 수신/디텍션을 시작한다.
+        이미 활성 상태면 아무 동작도 하지 않는다.
+        """
+        with self._lock:
+            if self._active.is_set():
+                return
+            self._cap = cv2.VideoCapture(self.device)
+            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.width)
+            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            self._cap.set(cv2.CAP_PROP_FPS,          self.fps)
+            self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            if not self._cap.isOpened():
+                logger.error(f"카메라를 열 수 없습니다: {self.device}")
+                self._cap = None
+                return
+            self._active.set()
+        logger.info(f"BoxTracker 활성화: {self.device} ({self.width}x{self.height}) — 프레임 수신 시작")
+
+    def deactivate(self):
+        """
+        입고 트리거 OFF 시 호출 (pick & place 완료 등).
+        카메라 디바이스를 해제하고 프레임 수신을 중단한다.
+        리소스(CPU, USB 대역폭) 절약을 위해 마지막 감지 결과도 비운다.
+        """
+        with self._lock:
+            self._active.clear()
+            if self._cap is not None:
+                self._cap.release()
+                self._cap = None
+            self._latest_boxes = []
+            self._latest_blob  = None
+            self._latest_frame = None
+        logger.info("BoxTracker 비활성화 — 카메라 리소스 해제, 프레임 수신 중단")
+
+    def is_active(self) -> bool:
+        """현재 카메라가 활성 상태(프레임 수신 중)인지 반환."""
+        return self._active.is_set()
 
     def stop(self):
-        """트래킹 루프를 종료한다."""
+        """트래킹 루프를 완전히 종료한다."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=2.0)
-        if self._cap:
-            self._cap.release()
+        with self._lock:
+            self._active.clear()
+            if self._cap:
+                self._cap.release()
+                self._cap = None
         logger.info("BoxTracker 종료")
 
     def get_best_box(self) -> BoxInfo | None:
-        """가장 큰 흰색 박스를 반환한다. 감지 없으면 None."""
+        """가장 큰 흰색 박스를 반환한다. 감지 없으면(또는 비활성 상태면) None."""
         with self._lock:
             if not self._latest_boxes:
                 return None
@@ -192,7 +261,7 @@ class BoxTracker:
             return self._latest_blob
 
     def get_latest_frame(self) -> np.ndarray | None:
-        """감지 결과가 그려진 최신 프레임을 반환한다."""
+        """감지 결과가 그려진 최신 프레임을 반환한다. 비활성 상태면 None."""
         with self._lock:
             return self._latest_frame.copy() if self._latest_frame is not None else None
 
@@ -202,10 +271,24 @@ class BoxTracker:
 
     def _loop(self):
         while self._running:
-            # ── [④ 개선] 버퍼 플러시: 3→5프레임으로 늘려 오래된 프레임 제거 ──
+            # ── 입고 트리거 OFF(비활성) 상태 ────────────────────
+            # 카메라 시야에 박스가 있어도 grab()/read() 자체를 호출하지 않음
+            # → CPU 디코딩/USB 대역폭 사용 없음 (리소스 절약)
+            if not self._active.is_set():
+                time.sleep(INACTIVE_POLL_INTERVAL)
+                continue
+
+            with self._lock:
+                cap = self._cap
+            if cap is None:
+                # activate() 직후 아직 _cap이 세팅되지 않은 극히 짧은 틈
+                time.sleep(INACTIVE_POLL_INTERVAL)
+                continue
+
+            # 버퍼 플러시: 오래된 프레임 제거 후 최신 프레임만 사용
             for _ in range(5):
-                self._cap.grab()
-            ret, frame = self._cap.read()
+                cap.grab()
+            ret, frame = cap.read()
             if not ret:
                 logger.warning("프레임 읽기 실패, 재시도...")
                 time.sleep(0.05)
@@ -216,6 +299,9 @@ class BoxTracker:
             annotated = self._annotate(frame.copy(), boxes, blob)
 
             with self._lock:
+                # deactivate()가 그 사이 호출됐을 수 있으므로 다시 확인
+                if not self._active.is_set():
+                    continue
                 self._latest_boxes = boxes
                 self._latest_blob  = blob
                 self._latest_frame = annotated
@@ -241,9 +327,7 @@ class BoxTracker:
 
             # minAreaRect: 기울어진 박스도 안정적으로 외접 사각형 추출
             rect = cv2.minAreaRect(cnt)
-            # (rcx, rcy), (rw, rh), _ = rect
-            # _detect() 내부 minAreaRect 부분
-            (rcx, rcy), (rw, rh), rect_angle = rect # angle 추출
+            (rcx, rcy), (rw, rh), rect_angle = rect
 
             # minAreaRect 각도 → 그리퍼 회전각으로 변환
             # rw > rh 이면 장변이 가로 방향 → 90도 보정 필요
@@ -273,8 +357,8 @@ class BoxTracker:
 
             cx, cy = int(rcx), int(rcy)
             x, y, w, h = cv2.boundingRect(approx)
-            # ★ width=short_side: minAreaRect 단변을 실제 박스 폭으로 저장
-            boxes.append(BoxInfo(cx, cy, area, (x, y, w, h), approx, width=short_side,angle=grip_angle))
+            # width=short_side: minAreaRect 단변을 실제 박스 폭으로 사용
+            boxes.append(BoxInfo(cx, cy, area, (x, y, w, h), approx, width=short_side, angle=grip_angle))
 
         return boxes
 
@@ -336,7 +420,7 @@ class BoxTracker:
             cv2.putText(frame, f"({box.cx},{box.cy})",
                         (box.cx + 6, box.cy + 4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.35, (180, 0, 0), 1)
-            # ★ width 추가 출력
+            # 크기/오차 텍스트
             w_str = f"{box.width:.0f}px" if box.width is not None else "?"
             cv2.putText(frame,
                         f"{box.size} w={w_str} ex={ex:+d} ey={ey:+d}",
@@ -347,42 +431,28 @@ class BoxTracker:
 
 class GripperAligner:
     # ── 게인 / 스텝 한계 ───────────────────────────────────────
-    KP_J1:        float = 0.08   # 0.05 → 0.08 (전반적 게인 상향)
-    KP_J2:        float = 0.08   # 0.05 → 0.08
-    MAX_STEP_DEG: float = 6.0    # 5.0 → 6.0 (스텝 상한 확대)
+    KP_J1:        float = 0.08   # J1 비례 게인
+    KP_J2:        float = 0.08   # J2 비례 게인
+    MAX_STEP_DEG: float = 6.0    # 1회 이동당 최대 스텝 (도)
 
-    # ── 연속 속도 범위 (구간 경계 제거) ────────────────────────
-    SPEED_MIN:  int   = 25    # 15 → 25 (미세 구간 최소 속도 상향)
+    # ── 연속 속도 범위 (오차 크기에 따라 선형 매핑) ────────────
+    SPEED_MIN:  int   = 25    # 미세 정렬 구간 최소 속도
     SPEED_MAX:  int   = 70    # 오차 ERR_REF 이상일 때 최대 속도
     ERR_REF:    float = 60.0  # 속도 포화 기준 오차 (px)
 
-    # ── EMA 필터 (카메라 노이즈 제거) ──────────────────────────
-    EMA_ALPHA:  float = 0.6   # 0.4 → 0.6 (최신 오차 반영 비율 높임)
+    # ── EMA 필터 (카메라 노이즈로 인한 프레임 단위 튀김 억제) ──
+    EMA_ALPHA:  float = 0.6   # 최신 오차 반영 비율
 
-    # ── 수렴 판정 (데드밴드 + 연속 카운터) ─────────────────────
-    STABLE_COUNT_TARGET: int = 1   # 5 → 1 (수렴 판정 완화)
+    # ── 수렴 판정 (연속 N프레임 데드밴드 이내면 정렬 완료) ─────
+    STABLE_COUNT_TARGET: int = 3
 
     def _smooth_speed(self, abs_err: float) -> int:
-        """
-        오차 크기를 [SPEED_MIN, SPEED_MAX] 로 연속 선형 매핑한다.
-        구간 경계가 없으므로 속도가 부드럽게 변한다.
-
-        abs_err=0       → SPEED_MIN
-        abs_err=ERR_REF → SPEED_MAX
-        abs_err>ERR_REF → SPEED_MAX (포화)
-        """
+        """오차 크기를 [SPEED_MIN, SPEED_MAX]로 선형 매핑한다 (ERR_REF 이상이면 포화)."""
         ratio = min(abs_err / self.ERR_REF, 1.0)
         return int(self.SPEED_MIN + (self.SPEED_MAX - self.SPEED_MIN) * ratio)
 
     def _smooth_step(self, error_px: float, kp: float) -> tuple[float, int]:
-        """
-        구간별 차등 승수로 스텝과 속도를 계산한다.
-
-        구간별 동작:
-          오차 >60px  → 1.5승: 빠르게 접근
-          오차 >20px  → 1.1승: 선형보다 약간 공격적
-          오차 <=20px → 1.0승: 선형 (0.7 → 1.0, 미세 구간 스텝 대폭 확대)
-        """
+        """오차 구간별 차등 승수로 이동 스텝과 속도를 계산한다."""
         abs_err = abs(error_px)
         sign    = 1 if error_px > 0 else -1
 
@@ -402,15 +472,12 @@ class GripperAligner:
         self.tracker = tracker
         self._sx     = 1 if flip_x else -1
 
-        # [② EMA 필터] 초기값 None → 첫 프레임에서 raw 값으로 초기화
+        # EMA 필터 상태 — 첫 프레임에서 raw 값으로 초기화됨
         self._ema_ex: float | None = None
         self._ema_ey: float | None = None
 
     def _update_ema(self, ex: float, ey: float) -> tuple[float, float]:
-        """
-        [② EMA 필터] 지수 이동평균으로 오차를 평활화한다.
-        카메라 노이즈로 인한 한 프레임 튀김을 억제한다.
-        """
+        """지수 이동평균으로 오차를 평활화해 카메라 노이즈로 인한 프레임 튀김을 억제한다."""
         if self._ema_ex is None:
             self._ema_ex, self._ema_ey = float(ex), float(ey)
         else:
@@ -424,17 +491,16 @@ class GripperAligner:
         self._ema_ex = None
         self._ema_ey = None
 
-    def align(self, timeout: float = 15.0) -> bool:
+    def align(self, timeout: float = 15.0, stop_event: threading.Event | None = None) -> bool:
         """
         J1·J2 동시 이동 + EMA 필터 + 연속 수렴 카운터로
         부드럽고 안정적인 중앙 정렬을 수행한다.
 
-        개선 사항:
-          ① 연속 게인 (smooth gain): 구간 경계 없이 속도·스텝이 연속 변화
-          ② EMA 필터: 카메라 노이즈를 평활화해 떨림 억제
-          ③ 수렴 카운터: N프레임 연속 허용 범위 진입 시에만 완료 판정
+        Args:
+            timeout:    최대 정렬 대기 시간 (초). 초과 시 False 반환.
+            stop_event: 외부에서 set() 시 즉시 중단 (핑키 트리거 등).
 
-        성공 시 True, 타임아웃 시 False.
+        성공 시 True, 타임아웃/중단 시 False.
         """
         logger.info("GripperAligner: 부드러운 정렬 시작 (smooth + EMA + stable counter)")
 
@@ -444,38 +510,43 @@ class GripperAligner:
             return False
 
         current_angles = list(init_angles)
-        stable_count   = 0          # [③ 수렴 카운터]
-        prev_box_found = False       # 박스 재감지 시 EMA 리셋용
+        stable_count   = 0
+        prev_box_found = False
 
-        # ── 시간 측정 ────────────────────────────────────────────
-        t_start     = time.perf_counter()   # 정렬 시작 시각
-        t_box_first = None                  # 박스 최초 감지 시각
-        frame_count = 0                     # 총 처리 프레임 수
-        move_count  = 0                     # 실제 관절 명령 횟수
+        t_start     = time.perf_counter()
+        t_box_first = None
+        frame_count = 0
+        move_count  = 0
 
         while True:
+            # ── 타임아웃 체크 ─────────────────────────────────────
+            elapsed = time.perf_counter() - t_start
+            if elapsed >= timeout:
+                logger.warning(f"정렬 타임아웃 ({timeout:.1f}s)")
+                print(f"\n  [타임아웃] {timeout:.1f}s 초과 — 정렬 중단")
+                return False
+
+            # ── 외부 중단 신호 체크 (핑키 트리거 등) ──────────────
+            if stop_event is not None and stop_event.is_set():
+                logger.info("정렬 외부 중단 (stop_event)")
+                print("\n  [중단] 외부 신호로 정렬 중단")
+                return False
+
             box  = self.tracker.get_best_box()
             blob = self.tracker.get_best_blob()
             frame_count += 1
 
-            # ── 박스 최초 감지 시각 기록 ─────────────────────────────
             if box is not None and t_box_first is None:
                 t_box_first = time.perf_counter()
 
-            # ── 박스 재감지 시 EMA 리셋 ─────────────────────────────
             if box is not None and not prev_box_found:
                 self._reset_ema()
             prev_box_found = box is not None
 
-            # ── 1단계: 박스 전체 감지 → 정밀 정렬 ──────────────────
             if box is not None:
                 raw_ex, raw_ey = box.error(self.tracker.width, self.tracker.height)
-
-                # [② EMA] 노이즈 평활화된 오차 사용
                 ex, ey = self._update_ema(raw_ex, raw_ey)
 
-                # [③ 수렴 카운터] EMA 오차 기준으로 판정
-                # → raw 오차 기준보다 노이즈에 덜 민감해 stable_count 리셋 빈도 감소
                 if abs(ex) <= CENTER_TOLERANCE_PX and abs(ey) <= CENTER_TOLERANCE_PX:
                     stable_count += 1
                     print(
@@ -489,12 +560,9 @@ class GripperAligner:
                         elapsed    = t_end - t_start
                         t_to_box   = (t_box_first - t_start) if t_box_first else 0.0
                         t_to_align = (t_end - t_box_first)   if t_box_first else elapsed
-
-                        # ★ 정렬 완료 시점의 박스 크기 정보
                         w_str = f"{box.width:.1f}px" if box.width is not None else "N/A"
 
-                        # \r 잔류 문자를 공백으로 지우고 새 줄에서 리포트 출력
-                        print("\r" + " " * 80)   # 현재 줄 클리어
+                        print("\r" + " " * 80)
                         print(
                             f"  [완료] {self.STABLE_COUNT_TARGET}프레임 연속 안정 — 중앙 정렬됨\n"
                             f"  ┌─ 정렬 완료 시간 리포트 ──────────────────────\n"
@@ -514,12 +582,10 @@ class GripperAligner:
                             f"  박스폭={w_str}  면적={box.area:.0f}px²"
                         )
                         return True
-                    # time.sleep(0.005)   # 수렴 대기: 0.02 → 0.005
                     continue
                 else:
-                    stable_count = 0   # 허용 범위 벗어나면 카운터 리셋
+                    stable_count = 0
 
-                # [① 연속 게인] EMA 평활화된 오차로 스텝·속도 계산
                 need_j1 = abs(ey) > CENTER_TOLERANCE_PX
                 need_j2 = abs(ex) > CENTER_TOLERANCE_PX
 
@@ -545,7 +611,6 @@ class GripperAligner:
                     end="", flush=True,
                 )
 
-            # ── 2단계: 일부만 보임 → blob 방향으로 탐색 ────────────
             elif blob is not None:
                 ex, ey = blob.error(self.tracker.width, self.tracker.height)
                 stable_count = 0
@@ -571,7 +636,6 @@ class GripperAligner:
                         end="", flush=True,
                     )
 
-            # ── 흰색 영역 없음 → 대기 ────────────────────────────────
             else:
                 stable_count = 0
                 print(f"\r  [대기] 흰색 영역 없음                              ",
@@ -579,16 +643,17 @@ class GripperAligner:
                 time.sleep(0.1)
                 continue
 
-            # 오차가 클 때는 대기 없이 즉시 다음 명령
-            # 오차가 작을 때만 짧게 대기해 미세 진동 방지
             total_err = abs(ex) + abs(ey)
-            time.sleep(0.0 if total_err > 20 else 0.005)  # 0.02 → 0.005
+            time.sleep(0.0 if total_err > 20 else 0.005)
 
 
 class StreamServer:
     """
     BoxTracker의 프레임을 MJPEG로 스트리밍하는 Flask 서버.
     브라우저에서 http://<로봇IP>:5000 으로 접속하면 실시간 화면을 볼 수 있다.
+
+    BoxTracker가 비활성(deactivate) 상태일 때는 get_latest_frame()이
+    None을 반환하므로, 대기 안내 프레임을 대신 보여준다.
     """
 
     def __init__(self, tracker: BoxTracker, host: str = "0.0.0.0", port: int = 5000):
@@ -622,12 +687,20 @@ class StreamServer:
         from flask import Response
         return Response(self._generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
+    def _idle_frame(self) -> np.ndarray:
+        """카메라 비활성 상태일 때 보여줄 대기 안내 프레임."""
+        frame = np.zeros((self.tracker.height, self.tracker.width, 3), dtype=np.uint8)
+        cv2.putText(frame, "STANDBY - waiting for inbound trigger",
+                    (20, self.tracker.height // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 120, 120), 1)
+        return frame
+
     def _generate(self):
         while True:
             frame = self.tracker.get_latest_frame()
             if frame is None:
-                time.sleep(0.01)
-                continue
+                frame = self._idle_frame()
+                time.sleep(0.2)
             _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
             yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
                    + buf.tobytes() + b"\r\n")
@@ -664,9 +737,10 @@ def main():
     else:
         print("--no-robot 모드: 로봇 연결 생략")
 
-    # ── 2. 박스 트래킹 시작 ─────────────────────────
+    # ── 2. 박스 트래킹 시작 (단독 실행 시에는 곧바로 활성화) ──
     tracker = BoxTracker()
     tracker.start()
+    tracker.activate()
 
     # ── 3. 스트리밍 서버 (선택) ──────────────────────
     if args.stream:
@@ -702,7 +776,6 @@ def main():
             box = tracker.get_best_box()
             if box:
                 ex, ey = box.error(640, 480)
-                # ★ width 추가 출력
                 w_str = f"{box.width:.1f}px" if box.width is not None else "N/A"
                 print(f"\r감지: {box}  error_x={ex:+4d}  error_y={ey:+4d}  "
                       f"centered={box.is_centered(640, 480)}  width={w_str}",

@@ -5,7 +5,7 @@ package_name = 'jetcobot1'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=find_packages(exclude=['test']),
+    packages=find_packages(exclude=['test', 'jetcobot1_ros2_dev']),
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'action_server = jetcobot1.action_server:main',
         ],
     },
 )

@@ -32,6 +32,7 @@ services:
     environment:
       - ROS_DOMAIN_ID=99
       - PYTHONUNBUFFERED=1
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
     restart: unless-stopped
 
   # ── MySQL DB ──────────────────────────────────────────────

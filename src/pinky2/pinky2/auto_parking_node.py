@@ -1,34 +1,28 @@
 #!/usr/bin/env python3
-"""
-시나리오: go_home → IR 흰선 주차 → 초음파 정밀 주차 → 180도 회전
-1. Nav2로 목표 좌표 이동
-2. IR 센서로 흰선 감지 → 정지
-3. 초음파로 정밀 주차 → 정지
-4. 오도메트리 기반 180도 회전 → 종료
-"""
 import math
-import time
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from rclpy.qos import QoSProfile, ReliabilityPolicy
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from nav2_msgs.action import NavigateToPose
-from geometry_msgs.msg import PoseStamped, Twist
+from geometry_msgs.msg import PoseStamped, Twist, PoseWithCovarianceStamped
 from std_msgs.msg import UInt16MultiArray, Bool
 from sensor_msgs.msg import Range
-from nav_msgs.msg import Odometry
 
-ODOM_QOS = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
-
-GOAL_YAW_DEG = 175.3  # go_home 도착 목표 방향 (흰선과 정렬되는 각도, AMCL 측정값)
+AMCL_QOS = QoSProfile(
+    depth=1,
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+)
 
 WHITE_THRESHOLD = 2000
 LINEAR_VEL  = 0.05
-ANGULAR_VEL = 0.5   # 회전 속도 [rad/s]
-US_STOP_DIST = 0.065  # 초음파 정지 거리 [m]
+ANGULAR_VEL = 0.5
+ROTATION_YAW_TOLERANCE = math.radians(3)
+US_STOP_DIST = 0.065
 
-LINE_KP = -0.0005          # 라인트레이싱 비례 게인 (좌우 IR raw 차이 → 각속도)
-LINE_ANGULAR_LIMIT = 0.3  # 라인트레이싱 최대 각속도 [rad/s]
+LINE_KP = -0.0005
+LINE_ANGULAR_LIMIT = 0.3
 
 LEFT  = 0
 MID   = 1
@@ -44,8 +38,10 @@ class AutoParkingNode(Node):
     def __init__(self):
         super().__init__('auto_parking_node')
 
-        self.declare_parameter('goal_x', -0.004)
-        self.declare_parameter('goal_y', 0.018)
+        #self.declare_parameter('goal_x', 0.001)
+        #self.declare_parameter('goal_y', -0.005)
+        self.declare_parameter('goal_x', 0.0)
+        self.declare_parameter('goal_y', 0.0)
         self.declare_parameter('white_threshold', WHITE_THRESHOLD)
         self.declare_parameter('us_stop_dist', US_STOP_DIST)
         self.declare_parameter('line_kp', LINE_KP)
@@ -64,25 +60,37 @@ class AutoParkingNode(Node):
         self.rotating   = False
         self.done       = False
 
-        self.last_yaw        = None
-        self.accumulated_yaw = 0.0
+        self.current_yaw = None
+        self.target_yaw  = None
 
-        self.cmd_pub = self.create_publisher(Twist, 'pinky2/cmd_vel', 10)
-        self.status_pub = self.create_publisher(Bool, 'pinky2/parking/auto_done', 10)
-        self._nav_client = ActionClient(self, NavigateToPose, 'pinky2/navigate_to_pose')
+        self.cmd_pub    = self.create_publisher(Twist, '/pinky1/cmd_vel', 10)
+        self.status_pub = self.create_publisher(Bool, '/pinky1/parking/auto_done', 10)
+        self._nav_client = ActionClient(self, NavigateToPose, '/pinky1/navigate_to_pose')
 
-        self.create_subscription(Odometry, '/pinky2/odom', self._odom_callback, ODOM_QOS)
-        self.create_subscription(UInt16MultiArray, 'pinky2/ir_sensor/range', self._ir_callback, 10)
-        self.create_subscription(Range, 'pinky2/us_sensor/range', self._us_callback, 10)
-        self.create_subscription(Bool, 'pinky2/parking/auto_start', self._start_callback, 10)
+        self.create_subscription(
+            PoseWithCovarianceStamped, '/pinky1/amcl_pose', self._pose_callback, AMCL_QOS
+        )
+        self.create_subscription(UInt16MultiArray, '/pinky1/ir_sensor/range', self._ir_callback, 10)
+        self.create_subscription(Range, '/pinky1/us_sensor/range', self._us_callback, 10)
+        self.create_subscription(Bool, '/pinky1/parking/auto_start', self._start_callback, 10)
+
+        self.create_timer(0.1, self._rotation_tick)
+
+        # wait_for_server 블로킹 방지 → 타이머로 Nav2 서버 준비 확인 후 시작
+        self._nav_check_timer = self.create_timer(1.0, self._check_nav_server)
 
         self.get_logger().info(
-            f'AutoParkingNode 시작. 목표=({self.goal_x}, {self.goal_y}), '
-            f'white_threshold={self.white_threshold}, us_stop_dist={self.us_stop_dist}m, '
-            f'line_kp={self.line_kp}, line_angular_limit={self.line_angular_limit}'
+            f'AutoParkingNode 시작. 목표=({self.goal_x}, {self.goal_y})'
         )
-        ###self._go_home() 단순테스트용
-        
+        self._go_home()
+    def _check_nav_server(self):
+        """Nav2 서버가 준비되면 자동으로 시작"""
+        if self._nav_client.server_is_ready():
+            self.get_logger().info('Nav2 서버 준비 완료. 이동 시작.')
+            self.destroy_timer(self._nav_check_timer)
+            self.started = True
+            self._go_home()
+
     def _start_callback(self, msg: Bool):
         if msg.data and not self.started:
             self.started = True
@@ -91,16 +99,16 @@ class AutoParkingNode(Node):
 
     def _finish(self, success: bool):
         self.status_pub.publish(Bool(data=success))
-        time.sleep(0.2)  # 메시지 전송 여유
         self.done = True
+        # 타이머로 약간 딜레이 후 shutdown (메시지 전송 여유)
+        self.create_timer(0.3, self._shutdown)
+
+    def _shutdown(self):
         rclpy.shutdown()
 
     # ── Phase 1: 네비게이션 ──────────────────────────────────────
 
     def _go_home(self):
-        self.get_logger().info('Nav2 서버 대기 중...')
-        self._nav_client.wait_for_server()
-
         goal = NavigateToPose.Goal()
         goal.pose = PoseStamped()
         goal.pose.header.frame_id = 'map'
@@ -108,10 +116,9 @@ class AutoParkingNode(Node):
         goal.pose.pose.position.x = self.goal_x
         goal.pose.pose.position.y = self.goal_y
 
-        self.get_logger().info(f'목표 전송: ({self.goal_x}, {self.goal_y}), yaw={GOAL_YAW_DEG}°')
+        self.get_logger().info(f'목표 전송: ({self.goal_x}, {self.goal_y})')
         future = self._nav_client.send_goal_async(
-            goal,
-            feedback_callback=self._nav_feedback,
+            goal, feedback_callback=self._nav_feedback
         )
         future.add_done_callback(self._nav_goal_response)
 
@@ -130,7 +137,7 @@ class AutoParkingNode(Node):
 
     def _nav_result(self, future):
         status = future.result().status
-        if status == 4:  # SUCCEEDED
+        if status == 4:
             self.get_logger().info('도착. IR 주차 모드 시작.')
             self._start_ir_parking()
         else:
@@ -158,7 +165,6 @@ class AutoParkingNode(Node):
             self._start_us_parking()
             return
 
-        # 좌우 raw 값 차이를 비례 오차로 사용해 직진하며 조향 보정
         error = float(left_raw - right_raw)
         angular_z = self.line_kp * error
         angular_z = max(-self.line_angular_limit, min(self.line_angular_limit, angular_z))
@@ -197,47 +203,53 @@ class AutoParkingNode(Node):
         twist.linear.x = LINEAR_VEL
         self.cmd_pub.publish(twist)
 
+    # ── amcl_pose 수신 ───────────────────────────────────────────
+
+    def _pose_callback(self, msg: PoseWithCovarianceStamped):
+        self.current_yaw = quat_to_yaw(msg.pose.pose.orientation)
+
     # ── Phase 4: 180도 회전 ──────────────────────────────────────
 
     def _start_rotation(self):
         self.rotating = True
-        self.last_yaw = None
-        self.accumulated_yaw = 0.0
+        self.target_yaw = None
 
-    def _odom_callback(self, msg: Odometry):
+    def _rotation_tick(self):
         if not self.rotating or self.done:
             return
-
-        current_yaw = quat_to_yaw(msg.pose.pose.orientation)
-
-        if self.last_yaw is None:
-            self.last_yaw = current_yaw
-            self.get_logger().info(f'회전 시작 yaw: {math.degrees(current_yaw):.1f}°')
+        if self.current_yaw is None:
             return
 
-        # 한 스텝 각도 변화 (작은 값이므로 wrapping 안전)
-        delta = current_yaw - self.last_yaw
-        if delta > math.pi:
-            delta -= 2 * math.pi
-        elif delta < -math.pi:
-            delta += 2 * math.pi
+        if self.target_yaw is None:
+            self.target_yaw = self.current_yaw + math.pi
+            if self.target_yaw > math.pi:
+                self.target_yaw -= 2 * math.pi
+            elif self.target_yaw < -math.pi:
+                self.target_yaw += 2 * math.pi
+            self.get_logger().info(f'회전 목표 yaw: {math.degrees(self.target_yaw):.1f}°')
 
-        self.accumulated_yaw += delta
-        self.last_yaw = current_yaw
+        angle_err = self.target_yaw - self.current_yaw
+        if angle_err > math.pi:
+            angle_err -= 2 * math.pi
+        elif angle_err < -math.pi:
+            angle_err += 2 * math.pi
 
         self.get_logger().info(
-            f'회전 누적: {math.degrees(self.accumulated_yaw):.1f}°', throttle_duration_sec=0.5
+            f'회전 중... 현재={math.degrees(self.current_yaw):.1f}°, '
+            f'목표={math.degrees(self.target_yaw):.1f}°, 오차={math.degrees(angle_err):.1f}°',
+            throttle_duration_sec=0.5,
         )
 
-        if abs(self.accumulated_yaw) >= math.pi:  # 180도 달성
+        if abs(angle_err) <= ROTATION_YAW_TOLERANCE:
             self.cmd_pub.publish(Twist())
             self.rotating = False
             self.get_logger().info('180도 회전 완료. 시나리오 종료.')
             self._finish(success=True)
             return
 
+        angular_z = max(-ANGULAR_VEL, min(ANGULAR_VEL, ANGULAR_VEL * angle_err))
         twist = Twist()
-        twist.angular.z = ANGULAR_VEL
+        twist.angular.z = angular_z
         self.cmd_pub.publish(twist)
 
 
