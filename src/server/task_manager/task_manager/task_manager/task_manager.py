@@ -717,6 +717,14 @@ def set_mode(mode: str):
     return {"routing_mode": ROUTING_MODE}
 
 
+@app.post("/debug/home_stack")
+def set_home_stack(order: list[str]):
+    with _lock:
+        _home_stack.clear()
+        _home_stack.extend(order)
+    return {"home_stack": _home_stack}
+
+
 @app.post("/zones/reset/{zone}")
 def reset_zone(zone: str):
     """occupied 존을 free로 초기화 (테스트용)."""
