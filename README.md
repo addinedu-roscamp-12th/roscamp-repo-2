@@ -70,8 +70,8 @@
     <tr>
       <td align="center">서동찬</td>
       <td align="center">팀원</td>
-      <td>작업 내용 나열</td>
-      <td align="center"><a href="#">@username</a></td>
+      <td>로봇 자율주행 제어 구현, DB 설계 및 DB 노드 구현, IR센서 라인트레이싱, 초음파센서 주차</td>
+      <td align="center"><a href="https://github.com/ddaammss">@ddaammss</a></td>
     </tr>
     <tr>
       <td align="center">이태경</td>
