@@ -19,7 +19,6 @@
 - [사전 패키지 설치](#-사전-패키지-설치)
 - [설치 및 빌드 방법](#-설치-및-빌드-방법)
 - [패키지 실행 방법](#-패키지-실행-방법)
-- [노드 추가 방법](#-노드-추가-방법)
 
 <br>
 
@@ -279,6 +278,7 @@ roscamp-repo-2/
     ├── jetcobot1/     # Jetcobot 로봇 1번 제어 패키지
     ├── jetcobot2/     # Jetcobot 로봇 2번 제어 패키지
     ├── pinky1/        # Pinky 로봇 1번 제어 패키지
+    ├── pinky2/        # Pinky 로봇 2번 제어 패키지
     └── db/            # MySQL DB 연결 및 쿼리 처리 패키지
 ```
 
@@ -295,6 +295,7 @@ roscamp-repo-2/
 | jetcobot1 | Jetcobot 1호 | Jetcobot 1번 로봇 제어 노드 모음 |
 | jetcobot2 | Jetcobot 2호 | Jetcobot 2번 로봇 제어 노드 모음 |
 | pinky1 | Pinky 1호 | Pinky 1번 로봇 제어 노드 모음 |
+| pinky2 | Pinky 2호 | Pinky 2번 로봇 제어 노드 모음 |
 | db | 공통 | MySQL DB 연결 및 쿼리 실행 노드 (`mysql_node`), DB 클라이언트 라이브러리 (`db_client`) |
 
 ### 공통 의존성
@@ -374,35 +375,4 @@ ros2 run <패키지명> <노드명>
 # 예시
 ros2 run jetcobot1 my_node
 ros2 run pinky1 my_node
-```
-
-<br>
-
-## ➕ 노드 추가 방법
-
-새 노드를 만들 때는 아래 순서를 따릅니다.
-
-### 1. 노드 파일 생성
-
-```
-src/jetcobot1/jetcobot1/my_node.py  ← 여기에 Python 파일 추가
-```
-
-### 2. `setup.py`에 `entry_points` 등록
-
-```python
-entry_points={
-    'console_scripts': [
-        'my_node = jetcobot1.my_node:main',  # 추가
-    ],
-},
-```
-
-> 형식: `'실행할이름 = 패키지명.파일명:함수명'`
-
-### 3. 다시 빌드
-
-```bash
-colcon build --packages-select jetcobot1
-source install/setup.bash
 ```
