@@ -17,8 +17,7 @@
 - [레포 구조](#-레포-구조)
 - [패키지 소개](#-패키지-소개)
 - [사전 패키지 설치](#-사전-패키지-설치)
-- [설치 및 빌드 방법](#-설치-및-빌드-방법)
-- [패키지 실행 방법](#-패키지-실행-방법)
+
 
 <br>
 
@@ -173,7 +172,7 @@
 
 비전 기반 입고(Pick & Place) 매니퓰레이터 모듈. MyCobot280 + Jetson + ROS2 + OpenCV 기반으로, 카메라로 박스를 인식해 정렬 → 픽업 → 적재 슬롯에 내려놓는 과정을 자동화하고, 예외 상황(공잡이, 낙하)을 검출·재시도하며, 적재 순서를 우선순위 큐로 관리한다.
 
-## 핵심 기능
+#### 핵심 기능
 
 | 기능 | 설명 |
 |---|---|
@@ -186,11 +185,11 @@
 
 ---
 
-## 1. 트리거 기반 카메라 활성화
+#### 1. 트리거 기반 카메라 활성화
 
 입고 명령이 들어오기 전까지는 카메라 프레임을 읽지 않고 대기하다가, 트리거가 들어오는 순간에만 캡처를 시작한다. 불필요한 프레임 읽기를 제거해 유휴 상태의 CPU 사용량을 낮췄다.
 
-## 2. 박스 탐지 & 중앙 정렬
+#### 2. 박스 탐지 & 중앙 정렬
 
 ```
 카메라 on → 프레임 캡처 → OpenCV 박스 탐지(컨투어/사각형 검출)
@@ -203,18 +202,18 @@
 - `ex`, `ey` 값이 0에 가까울수록 중앙 정렬 완료 상태
 - EMA 필터 기반으로 정렬 과정을 부드럽게 처리 (smooth + EMA + stable counter)
 
-## 3. IBVS 기반 오차 보정 & 로봇 제어
+#### 3. IBVS 기반 오차 보정 & 로봇 제어
 
 픽셀 오차를 EMA로 평활화한 뒤 비례 제어로 관절을 움직이는 폐루프 제어.
 
 - EMA 필터 노이즈 억제 계수: **α = 0.6**
 - 단계별 개선 결과(평균 정렬 소요 시간): **66s → 11s (83% 단축)**
 
-## 4. z거리 추정 & 그리퍼 자동 계산
+#### 4. z거리 추정 & 그리퍼 자동 계산
 
 핀홀 카메라 모델 기반 — 박스가 카메라에 가까울수록 픽셀 면적이 커지는 관계(면적 ∝ 1/거리²)를 이용해 z거리를 추정하고, 박스 크기에 따라 그리퍼 폭을 자동 계산한다. 박스 크기별 추정 결과를 비교·검증했다.
 
-## 5. Pick & Place 예외처리
+#### 5. Pick & Place 예외처리
 
 **Pick 실패 (공잡이) 검출 및 재시도**
 
@@ -238,7 +237,7 @@ large w=173px  ex=+133  ey=+39
 INFO 슬롯 0 박스 확인 [OK] → on_box_placed()
 ```
 
-## 6. 대기 테이블 우선순위 큐 (Priority Aging)
+#### 6. 대기 테이블 우선순위 큐 (Priority Aging)
 
 슬롯에 입고된 후 경과 시간에 따라 `priority_level`을 올리고, 핑키(AMR) 도착 시점에 우선순위 큐를 정렬해 1개씩 출고한다.
 
@@ -275,14 +274,20 @@ INFO 슬롯 0 박스 확인 [OK] → on_box_placed()
 ```
 roscamp-repo-2/
 └── src/
-    ├── jetcobot1/     # Jetcobot 로봇 1번 제어 패키지
-    ├── jetcobot2/     # Jetcobot 로봇 2번 제어 패키지
-    ├── pinky1/        # Pinky 로봇 1번 제어 패키지
-    ├── pinky2/        # Pinky 로봇 2번 제어 패키지
-    └── db/            # MySQL DB 연결 및 쿼리 처리 패키지
+    ├── jetcobot1/            # 입고 매니퓰레이터 (MyCobot280) 제어 패키지
+    ├── jetcobot2/            # 운송 매니퓰레이터 (MyCobot280) 제어 패키지
+    ├── pinky1/               # AMR 1호 (자율주행 이송 로봇) 제어 패키지
+    ├── pinky2/               # AMR 2호 (자율주행 이송 로봇) 제어 패키지
+    ├── ppi_gui/              # 사용자 및 관리자 GUI (PyQt5)
+    ├── db/                   # MySQL DB 연결 및 쿼리 처리 패키지
+    ├── ppibigi_interfaces/   # 커스텀 메시지/서비스 인터페이스 정의
+    └── server/               # 서버 모듈
+        ├── camera/           # 카메라 스트리밍 서버
+        ├── llm/              # LLM (Qwen) 웹 서버 및 파인튜닝
+        └── task_manager/     # 태스크 매니저 (FastAPI)
 ```
 
-`src/` 폴더 안에 각 로봇을 제어하는 ROS2 패키지가 들어있습니다.
+`src/` 폴더 안에 각 로봇 제어, GUI, DB, 서버 등의 ROS2 패키지가 들어있습니다.
 
 <br>
 
@@ -290,13 +295,16 @@ roscamp-repo-2/
 
 각 패키지는 Python(`ament_python`) 기반의 ROS2 패키지입니다.
 
-| 패키지 이름 | 대상 로봇 | 설명 |
-|------------|----------|------|
-| jetcobot1 | Jetcobot 1호 | Jetcobot 1번 로봇 제어 노드 모음 |
-| jetcobot2 | Jetcobot 2호 | Jetcobot 2번 로봇 제어 노드 모음 |
-| pinky1 | Pinky 1호 | Pinky 1번 로봇 제어 노드 모음 |
-| pinky2 | Pinky 2호 | Pinky 2번 로봇 제어 노드 모음 |
-| db | 공통 | MySQL DB 연결 및 쿼리 실행 노드 (`mysql_node`), DB 클라이언트 라이브러리 (`db_client`) |
+| 패키지 이름 | 대상 | 설명 |
+|------------|------|------|
+| jetcobot1 | 입고 매니퓰레이터 | 박스 인식, Pick & Place, 우선순위 큐, 음성 제어 |
+| jetcobot2 | 운송 매니퓰레이터 | 랙 공간 탐색, QR 코드 인식, 적재/반출 |
+| pinky1 | AMR 1호 | 자율주행 (SLAM & Nav2), ArUco 인식, 센서 관리 |
+| pinky2 | AMR 2호 | 자율주행 (SLAM & Nav2), 구역 간 이송 |
+| ppi_gui | GUI | 사용자/관리자 화면 (PyQt5), 카메라 스트리밍 뷰 |
+| db | 공통 | MySQL DB 연결 및 쿼리 실행 노드, DB 클라이언트 라이브러리 |
+| ppibigi_interfaces | 공통 | 커스텀 메시지/서비스 인터페이스 정의 |
+| server | 서버 | 카메라 서버, LLM 웹 서버 (Qwen), 태스크 매니저 (FastAPI) |
 
 ### 공통 의존성
 
@@ -314,65 +322,35 @@ roscamp-repo-2/
 
 ROS2 패키지 외에 아래 Python 라이브러리를 별도로 설치해야 합니다.
 
-### pymysql (db 패키지 사용 시 필수)
-
-MySQL 데이터베이스에 연결하기 위한 Python 라이브러리입니다.
+### 일괄 설치
 
 ```bash
-pip3 install pymysql
+pip3 install pymysql opencv-python numpy PyQt5 pymycobot flask pyzbar sounddevice openai-whisper fastapi uvicorn pydantic requests python-dateutil
 ```
 
-설치 확인:
+### 시스템 패키지
 
 ```bash
-python3 -c "import pymysql; print('pymysql 설치 완료')"
+sudo apt install libzbar0 ros-${ROS_DISTRO}-cv-bridge
 ```
 
-<br>
+### 패키지별 용도
 
-## 🚀 설치 및 빌드 방법
+| 패키지 | 용도 | 사용 패키지 |
+|--------|------|-------------|
+| pymysql | MySQL DB 연결 | db |
+| opencv-python | 영상 처리 및 박스/ArUco 인식 | jetcobot1, jetcobot2, pinky1, ppi_gui |
+| numpy | 수치 연산 | jetcobot1, jetcobot2, pinky1, ppi_gui |
+| PyQt5 | 사용자/관리자 GUI | ppi_gui |
+| pymycobot | MyCobot280 로봇팔 제어 | jetcobot1, jetcobot2 |
+| flask | 카메라 웹 스트리밍 | jetcobot1, jetcobot2 |
+| pyzbar | QR 코드 인식 | jetcobot2 |
+| sounddevice | 음성 입력 (마이크) | jetcobot1 |
+| openai-whisper | 음성 인식 (STT) | jetcobot1 |
+| fastapi | 태스크 매니저 / LLM 웹 API 서버 | server, jetcobot1 |
+| uvicorn | FastAPI ASGI 서버 실행 | server, jetcobot1 |
+| pydantic | API 데이터 모델 검증 | server, jetcobot1 |
+| requests | HTTP 요청 (LLM 서버 호출 등) | jetcobot1, jetcobot2, ppi_gui, server |
+| python-dateutil | 날짜 계산 | ppi_gui |
+| cv_bridge | ROS2 이미지 ↔ OpenCV 변환 | jetcobot2, pinky1 |
 
-### 1. 레포 클론
-
-```bash
-git clone https://github.com/addinedu-roscamp-12th/roscamp-repo-2.git
-cd roscamp-repo-2
-```
-
-### 2. 의존성 설치
-
-```bash
-# 워크스페이스 루트(roscamp-repo-2/)에서 실행
-rosdep install --from-paths src --ignore-src -r -y
-```
-
-> `rosdep`은 `package.xml`에 명시된 의존성을 자동으로 설치해주는 도구입니다.
-
-### 3. 빌드
-
-```bash
-# 워크스페이스 루트(roscamp-repo-2/)에서 실행
-colcon build
-```
-
-### 4. 환경 변수 설정
-
-빌드 후 매번 실행하거나 `~/.bashrc`에 추가:
-
-```bash
-source install/setup.bash
-```
-
-<br>
-
-## ▶️ 패키지 실행 방법
-
-빌드와 `source`가 완료된 후 아래 명령어로 노드를 실행합니다.
-
-```bash
-ros2 run <패키지명> <노드명>
-
-# 예시
-ros2 run jetcobot1 my_node
-ros2 run pinky1 my_node
-```
