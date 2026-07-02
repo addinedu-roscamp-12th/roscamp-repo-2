@@ -63,7 +63,7 @@
     <tr>
       <th width="80" style="text-align:center">이름</th>
       <th width="80" style="text-align:center">역할</th>
-      <th width="350" style="text-align:center">작업</th>
+      <th width="500" style="text-align:center">작업</th>
       <th width="80" style="text-align:center">GitHub</th>
     </tr>
   </thead>
