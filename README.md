@@ -29,7 +29,7 @@
   <thead>
     <tr>
       <th width="120" style="text-align:center">항목</th>
-      <th width="500" style="text-align:center">내용</th>
+      <th width=650" style="text-align:center">내용</th>
     </tr>
   </thead>
   <tbody>
